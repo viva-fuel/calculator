@@ -1,0 +1,1305 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1.0" />
+<meta name="description" content="Calculadora de carga de combustible - Viva Aerobus" />
+<meta name="theme-color" content="#00B140" />
+<title>Viva Aerobus · Fuel Loading Calculator</title>
+
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Bricolage+Grotesque:opsz,wght@12..96,500;12..96,600;12..96,700;12..96,800&family=Manrope:wght@400;500;600;700&family=JetBrains+Mono:wght@400;500;700&display=swap" rel="stylesheet">
+
+<style>
+  :root {
+    --viva-green: #00B140;
+    --viva-green-dark: #008F33;
+    --viva-green-soft: #E6F7EC;
+    --viva-magenta: #EC008C;
+    --viva-magenta-dark: #BF0070;
+    --viva-magenta-soft: #FCE6F2;
+
+    --bg: #F4F5F1;
+    --bg-grid: #ECEEE6;
+    --surface: #FFFFFF;
+    --surface-alt: #FAFBF7;
+    --ink: #0A0E0A;
+    --ink-2: #2A2F2A;
+    --muted: #6B716B;
+    --line: #E1E5DC;
+    --line-strong: #C9CFC2;
+
+    --warn: #FFB800;
+    --danger: #DC2626;
+
+    --radius-lg: 18px;
+    --radius-md: 12px;
+    --radius-sm: 8px;
+
+    --shadow-sm: 0 1px 2px rgba(10, 14, 10, 0.04), 0 1px 1px rgba(10, 14, 10, 0.03);
+    --shadow-md: 0 4px 12px rgba(10, 14, 10, 0.06), 0 2px 4px rgba(10, 14, 10, 0.04);
+    --shadow-lg: 0 18px 40px -12px rgba(10, 14, 10, 0.18), 0 8px 16px -8px rgba(10, 14, 10, 0.08);
+
+    --font-display: 'Bricolage Grotesque', ui-sans-serif, system-ui, -apple-system, "Segoe UI", sans-serif;
+    --font-body: 'Manrope', ui-sans-serif, system-ui, -apple-system, "Segoe UI", sans-serif;
+    --font-mono: 'JetBrains Mono', ui-monospace, "SFMono-Regular", Menlo, Consolas, monospace;
+  }
+
+  * { box-sizing: border-box; }
+  html, body { margin: 0; padding: 0; }
+
+  body {
+    font-family: var(--font-body);
+    color: var(--ink);
+    background: var(--bg);
+    background-image:
+      linear-gradient(var(--bg-grid) 1px, transparent 1px),
+      linear-gradient(90deg, var(--bg-grid) 1px, transparent 1px);
+    background-size: 48px 48px;
+    background-position: -1px -1px;
+    min-height: 100vh;
+    -webkit-font-smoothing: antialiased;
+    -moz-osx-font-smoothing: grayscale;
+    line-height: 1.5;
+  }
+
+  /* ======================== HEADER ======================== */
+  .topbar {
+    position: sticky;
+    top: 0;
+    z-index: 50;
+    background: rgba(255, 255, 255, 0.85);
+    backdrop-filter: saturate(140%) blur(12px);
+    -webkit-backdrop-filter: saturate(140%) blur(12px);
+    border-bottom: 1px solid var(--line);
+  }
+  .topbar-inner {
+    max-width: 1240px;
+    margin: 0 auto;
+    padding: 14px 28px;
+    display: flex;
+    align-items: center;
+    gap: 24px;
+  }
+  .brand {
+    display: flex;
+    align-items: center;
+    gap: 14px;
+    flex: 0 0 auto;
+  }
+  .brand-logo {
+    height: 34px;
+    width: auto;
+    display: block;
+    user-select: none;
+    -webkit-user-drag: none;
+  }
+  .brand-tag {
+    font-family: var(--font-mono);
+    font-size: 10px;
+    text-transform: uppercase;
+    letter-spacing: 0.22em;
+    color: var(--muted);
+    font-weight: 600;
+    padding: 4px 8px;
+    border: 1px solid var(--line);
+    border-radius: 999px;
+    background: var(--surface-alt);
+    line-height: 1;
+    white-space: nowrap;
+  }
+
+  .topbar-divider {
+    width: 1px; height: 28px; background: var(--line);
+  }
+
+  .topbar-title {
+    font-family: var(--font-display);
+    font-weight: 600;
+    letter-spacing: -0.02em;
+    font-size: 16px;
+    color: var(--ink-2);
+    flex: 1 1 auto;
+  }
+  .topbar-title small {
+    display: block;
+    font-family: var(--font-mono);
+    font-size: 10px;
+    letter-spacing: 0.2em;
+    text-transform: uppercase;
+    color: var(--muted);
+    font-weight: 500;
+    margin-top: 2px;
+  }
+
+  .clock {
+    font-family: var(--font-mono);
+    font-size: 13px;
+    color: var(--ink-2);
+    text-align: right;
+    line-height: 1.3;
+  }
+  .clock .time { font-weight: 700; font-size: 16px; letter-spacing: 0.04em; }
+  .clock .date {
+    font-size: 11px;
+    text-transform: uppercase;
+    letter-spacing: 0.16em;
+    color: var(--muted);
+  }
+
+  /* ======================== LAYOUT ======================== */
+  main {
+    max-width: 1240px;
+    margin: 0 auto;
+    padding: 36px 28px 64px;
+    display: grid;
+    gap: 28px;
+  }
+
+  .section-tag {
+    display: inline-flex;
+    align-items: center;
+    gap: 8px;
+    font-family: var(--font-mono);
+    font-size: 11px;
+    text-transform: uppercase;
+    letter-spacing: 0.22em;
+    color: var(--viva-green-dark);
+    font-weight: 700;
+  }
+  .section-tag::before {
+    content: "";
+    width: 8px; height: 8px;
+    background: var(--viva-green);
+    border-radius: 2px;
+    box-shadow: 0 0 0 4px var(--viva-green-soft);
+  }
+  .section-tag.magenta { color: var(--viva-magenta-dark); }
+  .section-tag.magenta::before {
+    background: var(--viva-magenta);
+    box-shadow: 0 0 0 4px var(--viva-magenta-soft);
+  }
+  .section-title {
+    font-family: var(--font-display);
+    font-weight: 700;
+    letter-spacing: -0.035em;
+    font-size: clamp(28px, 3.4vw, 40px);
+    line-height: 1.05;
+    margin: 10px 0 6px;
+    color: var(--ink);
+  }
+  .section-sub {
+    color: var(--muted);
+    font-size: 15px;
+    max-width: 60ch;
+    margin: 0;
+  }
+
+  /* ======================== CALCULATOR CARD ======================== */
+  .card {
+    background: var(--surface);
+    border: 1px solid var(--line);
+    border-radius: var(--radius-lg);
+    box-shadow: var(--shadow-md);
+    overflow: hidden;
+  }
+
+  .calc-card {
+    display: grid;
+    grid-template-columns: 1.05fr 1fr;
+  }
+  @media (max-width: 980px) {
+    .calc-card { grid-template-columns: 1fr; }
+  }
+
+  .calc-inputs {
+    padding: 32px;
+    border-right: 1px solid var(--line);
+    background: var(--surface);
+  }
+  @media (max-width: 980px) {
+    .calc-inputs { border-right: 0; border-bottom: 1px solid var(--line); }
+  }
+
+  .input-grid {
+    display: grid;
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+    gap: 16px;
+    margin-top: 20px;
+  }
+  .input-grid .full { grid-column: 1 / -1; }
+
+  .field {
+    display: flex;
+    flex-direction: column;
+    gap: 8px;
+  }
+  .field label {
+    font-family: var(--font-mono);
+    font-size: 11px;
+    letter-spacing: 0.2em;
+    text-transform: uppercase;
+    color: var(--muted);
+    font-weight: 600;
+    display: flex;
+    align-items: center;
+    gap: 6px;
+  }
+  .field label .hint {
+    font-family: var(--font-body);
+    text-transform: none;
+    letter-spacing: 0;
+    color: var(--line-strong);
+    font-weight: 500;
+    font-size: 12px;
+  }
+
+  .input-wrap {
+    position: relative;
+    display: flex;
+    align-items: center;
+    border: 1.5px solid var(--line);
+    border-radius: var(--radius-md);
+    background: var(--surface-alt);
+    transition: all 160ms ease;
+  }
+  .input-wrap:focus-within {
+    border-color: var(--viva-green);
+    background: white;
+    box-shadow: 0 0 0 4px var(--viva-green-soft);
+  }
+  .input-wrap.error {
+    border-color: var(--viva-magenta);
+    background: white;
+    box-shadow: 0 0 0 4px var(--viva-magenta-soft);
+  }
+  .input-wrap input {
+    flex: 1 1 auto;
+    width: 100%;
+    background: transparent;
+    border: 0;
+    outline: none;
+    padding: 14px 16px;
+    font-family: var(--font-mono);
+    font-size: 22px;
+    font-weight: 600;
+    color: var(--ink);
+    letter-spacing: 0.01em;
+  }
+  .input-wrap input::placeholder { color: #B7BCB1; font-weight: 400; }
+  .input-wrap .unit {
+    padding: 0 16px 0 8px;
+    font-family: var(--font-mono);
+    font-size: 12px;
+    letter-spacing: 0.18em;
+    text-transform: uppercase;
+    color: var(--muted);
+    font-weight: 700;
+    border-left: 1px dashed var(--line);
+    height: 100%;
+    display: flex;
+    align-items: center;
+  }
+  .field-error {
+    color: var(--viva-magenta-dark);
+    font-size: 12px;
+    margin-top: 2px;
+    display: none;
+  }
+  .field.has-error .field-error { display: block; }
+
+  /* ======================== RESULTS PANEL ======================== */
+  .calc-results {
+    padding: 32px;
+    background:
+      radial-gradient(120% 140% at 110% -10%, var(--viva-magenta-soft) 0%, transparent 55%),
+      radial-gradient(120% 120% at -10% 110%, var(--viva-green-soft) 0%, transparent 55%),
+      var(--surface);
+    display: flex;
+    flex-direction: column;
+    gap: 20px;
+    position: relative;
+  }
+  .calc-results::before {
+    content: "";
+    position: absolute;
+    inset: 0;
+    background-image:
+      linear-gradient(var(--bg-grid) 1px, transparent 1px),
+      linear-gradient(90deg, var(--bg-grid) 1px, transparent 1px);
+    background-size: 24px 24px;
+    opacity: 0.35;
+    pointer-events: none;
+  }
+  .calc-results > * { position: relative; }
+
+  .stat-row {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    gap: 12px;
+  }
+  .stat {
+    background: rgba(255, 255, 255, 0.7);
+    border: 1px solid var(--line);
+    border-radius: var(--radius-md);
+    padding: 14px 16px;
+    backdrop-filter: blur(4px);
+  }
+  .stat .label {
+    font-family: var(--font-mono);
+    font-size: 10px;
+    letter-spacing: 0.22em;
+    text-transform: uppercase;
+    color: var(--muted);
+    font-weight: 700;
+  }
+  .stat .value {
+    font-family: var(--font-mono);
+    font-size: 26px;
+    font-weight: 700;
+    color: var(--ink);
+    margin-top: 4px;
+    letter-spacing: -0.01em;
+  }
+  .stat .value .u {
+    font-size: 12px;
+    color: var(--muted);
+    font-weight: 600;
+    margin-left: 4px;
+    letter-spacing: 0.16em;
+    text-transform: uppercase;
+  }
+
+  .range-card {
+    border: 1.5px solid var(--ink);
+    border-radius: var(--radius-md);
+    background: var(--ink);
+    color: white;
+    padding: 20px 22px 22px;
+    position: relative;
+    overflow: hidden;
+  }
+  .range-card::before {
+    content: "";
+    position: absolute;
+    inset: 0;
+    background:
+      radial-gradient(60% 100% at 0% 100%, rgba(0, 177, 64, 0.35) 0%, transparent 60%),
+      radial-gradient(60% 100% at 100% 0%, rgba(236, 0, 140, 0.30) 0%, transparent 60%);
+    pointer-events: none;
+  }
+  .range-card > * { position: relative; }
+
+  .range-head {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 12px;
+    margin-bottom: 14px;
+  }
+  .range-head .tag {
+    font-family: var(--font-mono);
+    font-size: 10px;
+    letter-spacing: 0.24em;
+    text-transform: uppercase;
+    color: rgba(255, 255, 255, 0.7);
+    font-weight: 700;
+  }
+  .range-head .badge {
+    font-family: var(--font-mono);
+    font-size: 10px;
+    letter-spacing: 0.18em;
+    text-transform: uppercase;
+    color: var(--ink);
+    background: var(--viva-green);
+    padding: 4px 8px;
+    border-radius: 4px;
+    font-weight: 700;
+  }
+
+  .range-grid {
+    display: grid;
+    grid-template-columns: 1fr auto 1fr;
+    align-items: end;
+    gap: 14px;
+  }
+  .range-num {
+    display: flex;
+    flex-direction: column;
+    gap: 4px;
+  }
+  .range-num .k {
+    font-family: var(--font-mono);
+    font-size: 10px;
+    letter-spacing: 0.24em;
+    text-transform: uppercase;
+    color: rgba(255, 255, 255, 0.6);
+    font-weight: 700;
+  }
+  .range-num .v {
+    font-family: var(--font-display);
+    font-weight: 700;
+    font-size: clamp(40px, 6vw, 64px);
+    line-height: 1;
+    letter-spacing: -0.04em;
+    color: white;
+    font-feature-settings: "tnum" 1, "ss01" 1;
+    word-break: break-all;
+  }
+  .range-num.high .v { color: var(--viva-green); }
+  .range-num.low .v { color: var(--viva-magenta); }
+  .range-num .u {
+    font-family: var(--font-mono);
+    font-size: 11px;
+    color: rgba(255, 255, 255, 0.55);
+    letter-spacing: 0.2em;
+    text-transform: uppercase;
+    font-weight: 600;
+    margin-top: 2px;
+  }
+  .range-arrow {
+    align-self: center;
+    font-family: var(--font-mono);
+    color: rgba(255, 255, 255, 0.45);
+    font-size: 22px;
+    padding-bottom: 18px;
+    user-select: none;
+  }
+
+  .range-meta {
+    margin-top: 14px;
+    padding-top: 14px;
+    border-top: 1px dashed rgba(255, 255, 255, 0.18);
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 10px;
+    font-family: var(--font-mono);
+    font-size: 11px;
+    letter-spacing: 0.14em;
+    text-transform: uppercase;
+    color: rgba(255, 255, 255, 0.65);
+    flex-wrap: wrap;
+  }
+
+  /* ======================== ACTION BAR ======================== */
+  .actions {
+    display: flex;
+    gap: 12px;
+    flex-wrap: wrap;
+    margin-top: 4px;
+  }
+
+  .btn {
+    --btn-bg: var(--ink);
+    --btn-fg: white;
+    --btn-border: var(--ink);
+    appearance: none;
+    border: 1.5px solid var(--btn-border);
+    background: var(--btn-bg);
+    color: var(--btn-fg);
+    border-radius: var(--radius-md);
+    padding: 14px 22px;
+    font-family: var(--font-display);
+    font-size: 15px;
+    font-weight: 700;
+    letter-spacing: -0.01em;
+    cursor: pointer;
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    gap: 10px;
+    transition: transform 120ms ease, box-shadow 160ms ease, background 160ms ease, color 160ms ease;
+    user-select: none;
+    white-space: nowrap;
+  }
+  .btn:active { transform: translateY(1px); }
+  .btn:disabled { opacity: 0.45; cursor: not-allowed; }
+
+  .btn.primary {
+    --btn-bg: var(--viva-green);
+    --btn-fg: white;
+    --btn-border: var(--viva-green);
+    box-shadow: 0 8px 18px -8px rgba(0, 177, 64, 0.6);
+  }
+  .btn.primary:hover:not(:disabled) {
+    --btn-bg: var(--viva-green-dark);
+    --btn-border: var(--viva-green-dark);
+    box-shadow: 0 12px 22px -8px rgba(0, 143, 51, 0.7);
+  }
+  .btn.outline-magenta {
+    --btn-bg: white;
+    --btn-fg: var(--viva-magenta-dark);
+    --btn-border: var(--viva-magenta);
+  }
+  .btn.outline-magenta:hover:not(:disabled) {
+    --btn-bg: var(--viva-magenta);
+    --btn-fg: white;
+  }
+  .btn.ghost {
+    --btn-bg: transparent;
+    --btn-fg: var(--ink-2);
+    --btn-border: var(--line-strong);
+  }
+  .btn.ghost:hover:not(:disabled) {
+    --btn-bg: var(--surface-alt);
+    --btn-border: var(--ink-2);
+  }
+  .btn .ic {
+    width: 16px; height: 16px;
+    display: inline-grid;
+    place-items: center;
+  }
+  .btn .ic svg { width: 100%; height: 100%; }
+
+  /* ======================== TOAST ======================== */
+  .toast {
+    position: fixed;
+    bottom: 24px;
+    left: 50%;
+    transform: translateX(-50%) translateY(80px);
+    background: var(--ink);
+    color: white;
+    padding: 12px 18px;
+    border-radius: 10px;
+    font-family: var(--font-body);
+    font-size: 14px;
+    font-weight: 600;
+    box-shadow: var(--shadow-lg);
+    opacity: 0;
+    pointer-events: none;
+    transition: transform 240ms cubic-bezier(.2,.8,.2,1), opacity 200ms ease;
+    z-index: 100;
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    border: 1px solid rgba(255,255,255,0.06);
+  }
+  .toast.show {
+    transform: translateX(-50%) translateY(0);
+    opacity: 1;
+  }
+  .toast .dot {
+    width: 8px; height: 8px; border-radius: 999px;
+    background: var(--viva-green);
+  }
+  .toast.warn .dot { background: var(--viva-magenta); }
+
+  /* ======================== TABLE ======================== */
+  .records-head {
+    display: flex;
+    align-items: end;
+    justify-content: space-between;
+    gap: 16px;
+    flex-wrap: wrap;
+    margin-bottom: 4px;
+  }
+  .records-head .actions { margin-top: 0; }
+
+  .table-wrap {
+    overflow: auto;
+    border-radius: var(--radius-lg);
+    border: 1px solid var(--line);
+    background: var(--surface);
+    box-shadow: var(--shadow-sm);
+  }
+
+  table.records {
+    width: 100%;
+    border-collapse: collapse;
+    min-width: 920px;
+  }
+  table.records thead th {
+    text-align: left;
+    font-family: var(--font-mono);
+    font-size: 10px;
+    letter-spacing: 0.2em;
+    text-transform: uppercase;
+    color: var(--muted);
+    font-weight: 700;
+    padding: 14px 18px;
+    border-bottom: 1px solid var(--line);
+    background: var(--surface-alt);
+    white-space: nowrap;
+    position: sticky;
+    top: 0;
+  }
+  table.records tbody td {
+    padding: 14px 18px;
+    border-bottom: 1px solid var(--line);
+    font-family: var(--font-mono);
+    font-size: 13px;
+    color: var(--ink);
+    white-space: nowrap;
+  }
+  table.records tbody tr:last-child td { border-bottom: 0; }
+  table.records tbody tr:hover td { background: var(--surface-alt); }
+
+  td.flight { font-weight: 700; letter-spacing: 0.04em; }
+  td.range { color: var(--viva-green-dark); font-weight: 700; }
+
+  .pill {
+    display: inline-flex;
+    align-items: center;
+    gap: 6px;
+    padding: 4px 10px;
+    border-radius: 999px;
+    font-family: var(--font-mono);
+    font-size: 10px;
+    letter-spacing: 0.18em;
+    text-transform: uppercase;
+    font-weight: 700;
+    border: 1px solid;
+  }
+  .pill.ok {
+    color: var(--viva-green-dark);
+    background: var(--viva-green-soft);
+    border-color: rgba(0, 143, 51, 0.25);
+  }
+  .pill.no-info {
+    color: var(--viva-magenta-dark);
+    background: var(--viva-magenta-soft);
+    border-color: rgba(191, 0, 112, 0.25);
+  }
+  .pill .d { width: 6px; height: 6px; border-radius: 999px; background: currentColor; }
+
+  .empty {
+    padding: 60px 24px;
+    text-align: center;
+    color: var(--muted);
+  }
+  .empty .ic {
+    width: 48px; height: 48px; margin: 0 auto 14px;
+    border-radius: 12px;
+    background: var(--surface-alt);
+    display: grid; place-items: center;
+    color: var(--line-strong);
+    border: 1px dashed var(--line-strong);
+  }
+  .empty h4 {
+    font-family: var(--font-display);
+    color: var(--ink-2);
+    font-weight: 700;
+    margin: 0 0 4px;
+    letter-spacing: -0.02em;
+  }
+  .empty p { margin: 0; font-size: 14px; }
+
+  /* ======================== FOOTER ======================== */
+  footer.foot {
+    max-width: 1240px;
+    margin: 0 auto;
+    padding: 24px 28px 40px;
+    color: var(--muted);
+    font-family: var(--font-mono);
+    font-size: 11px;
+    letter-spacing: 0.18em;
+    text-transform: uppercase;
+    display: flex;
+    justify-content: space-between;
+    gap: 12px;
+    flex-wrap: wrap;
+    border-top: 1px solid var(--line);
+    margin-top: 12px;
+  }
+  footer.foot .stripe {
+    display: inline-block;
+    width: 28px; height: 4px;
+    background: linear-gradient(90deg, var(--viva-green) 0 50%, var(--viva-magenta) 50% 100%);
+    border-radius: 2px;
+    margin-right: 8px;
+    vertical-align: middle;
+  }
+
+  /* ======================== MOBILE ======================== */
+  @media (max-width: 720px) {
+    .topbar-inner { padding: 12px 18px; gap: 12px; }
+    .topbar-divider { display: none; }
+    .topbar-title { font-size: 14px; }
+    .clock .time { font-size: 13px; }
+    .brand-logo { height: 26px; }
+    .brand-tag { display: none; }
+    main { padding: 22px 16px 48px; gap: 22px; }
+    .calc-inputs, .calc-results { padding: 22px; }
+    .input-grid { grid-template-columns: 1fr; }
+    .stat-row { grid-template-columns: 1fr; }
+    .range-grid { grid-template-columns: 1fr; }
+    .range-arrow { display: none; }
+    .actions .btn { flex: 1 1 100%; }
+  }
+
+  /* ======================== MOTION ======================== */
+  @keyframes pop {
+    0% { transform: scale(0.96); opacity: 0.4; }
+    100% { transform: scale(1); opacity: 1; }
+  }
+  .pop { animation: pop 220ms cubic-bezier(.2,.8,.2,1); }
+
+  @media (prefers-reduced-motion: reduce) {
+    .pop, .toast { animation: none !important; transition: none !important; }
+  }
+
+  /* hide number arrows */
+  input[type="number"]::-webkit-outer-spin-button,
+  input[type="number"]::-webkit-inner-spin-button { -webkit-appearance: none; margin: 0; }
+  input[type="number"] { -moz-appearance: textfield; appearance: textfield; }
+</style>
+</head>
+<body>
+
+<header class="topbar">
+  <div class="topbar-inner">
+    <div class="brand">
+      <img class="brand-logo" alt="Viva Aerobus"
+           src="data:image/png;base64,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" />
+      <span class="brand-tag">Flight Operations</span>
+    </div>
+    <div class="topbar-divider" aria-hidden="true"></div>
+    <div class="topbar-title">
+      Fuel Loading Calculator
+      <small>Cabin · Pre-flight</small>
+    </div>
+    <div class="clock" aria-live="polite">
+      <div class="time" id="clockTime">--:--:--</div>
+      <div class="date" id="clockDate">--</div>
+    </div>
+  </div>
+</header>
+
+<main>
+
+  <!-- ============== CALCULATOR ============== -->
+  <section aria-labelledby="calc-title">
+    <div class="section-tag">01 · Cálculo</div>
+    <h1 id="calc-title" class="section-title">Calculadora de carga de combustible</h1>
+    <p class="section-sub">Ingresá el vuelo, el FR/FOB en KG y la densidad reportada por el ground handler. El sistema te devuelve el rango en litros (±1.75%) que tenés que comunicar.</p>
+
+    <div class="card calc-card" style="margin-top: 18px;">
+      <div class="calc-inputs">
+        <div class="section-tag">Datos del vuelo</div>
+        <div class="input-grid">
+          <div class="field full" id="f-flight">
+            <label for="flight">Número de vuelo
+              <span class="hint">— Ej: VB1234</span>
+            </label>
+            <div class="input-wrap">
+              <input id="flight" type="text" autocomplete="off" inputmode="text" placeholder="VB····" maxlength="10" />
+            </div>
+            <div class="field-error">Ingresá el número de vuelo.</div>
+          </div>
+
+          <div class="field" id="f-fr">
+            <label for="fr">FR — Fuel Remaining</label>
+            <div class="input-wrap">
+              <input id="fr" type="number" inputmode="decimal" min="0" step="any" placeholder="0" />
+              <span class="unit">KG</span>
+            </div>
+            <div class="field-error">FR debe ser un número válido.</div>
+          </div>
+
+          <div class="field" id="f-fob">
+            <label for="fob">FOB — Fuel On Board</label>
+            <div class="input-wrap">
+              <input id="fob" type="number" inputmode="decimal" min="0" step="any" placeholder="0" />
+              <span class="unit">KG</span>
+            </div>
+            <div class="field-error">FOB debe ser mayor que FR.</div>
+          </div>
+
+          <div class="field full" id="f-density">
+            <label for="density">Densidad <span class="hint">— Reportada por ground handler</span></label>
+            <div class="input-wrap">
+              <input id="density" type="number" inputmode="decimal" min="0" step="0.001" placeholder="0.793" />
+              <span class="unit">kg/L</span>
+            </div>
+            <div class="field-error">La densidad debe ser mayor que cero.</div>
+          </div>
+        </div>
+      </div>
+
+      <div class="calc-results">
+        <div class="section-tag magenta">Resultado</div>
+
+        <div class="stat-row">
+          <div class="stat">
+            <div class="label">KG a cargar</div>
+            <div class="value"><span id="rTotalKg">—</span><span class="u">kg</span></div>
+          </div>
+          <div class="stat">
+            <div class="label">Litros (total)</div>
+            <div class="value"><span id="rTotalL">—</span><span class="u">L</span></div>
+          </div>
+        </div>
+
+        <div class="range-card" id="rangeCard">
+          <div class="range-head">
+            <span class="tag">Rango a comunicar al ground handler</span>
+            <span class="badge">±1.75%</span>
+          </div>
+          <div class="range-grid">
+            <div class="range-num low">
+              <span class="k">Low end</span>
+              <span class="v" id="rLow">—</span>
+              <span class="u">litros</span>
+            </div>
+            <div class="range-arrow" aria-hidden="true">↔</div>
+            <div class="range-num high">
+              <span class="k">High end</span>
+              <span class="v" id="rHigh">—</span>
+              <span class="u">litros</span>
+            </div>
+          </div>
+          <div class="range-meta">
+            <span>Tolerancia operacional · +200 kg</span>
+            <span id="metaDensity">Densidad: —</span>
+          </div>
+        </div>
+
+        <div class="actions">
+          <button class="btn primary" id="btnSave" type="button">
+            <span class="ic" aria-hidden="true">
+              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round"><path d="M5 13l4 4L19 7"/></svg>
+            </span>
+            Registrar carga
+          </button>
+          <button class="btn outline-magenta" id="btnNoInfo" type="button" title="Registrar incidente: el ground handler no compartió la información">
+            <span class="ic" aria-hidden="true">
+              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="9"/><path d="M12 8v5"/><path d="M12 16.2v.05"/></svg>
+            </span>
+            No me compartieron la info
+          </button>
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <!-- ============== RECORDS ============== -->
+  <section aria-labelledby="rec-title">
+    <div class="records-head">
+      <div>
+        <div class="section-tag">02 · Registro</div>
+        <h2 id="rec-title" class="section-title" style="font-size: clamp(22px, 2.6vw, 30px);">Histórico de cargas</h2>
+        <p class="section-sub">Todos los cálculos quedan guardados en este dispositivo. Descargalos como CSV para enviar o archivar.</p>
+      </div>
+      <div class="actions">
+        <button class="btn ghost" id="btnDownload" type="button">
+          <span class="ic" aria-hidden="true">
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 4v12"/><path d="M7 11l5 5 5-5"/><path d="M5 20h14"/></svg>
+          </span>
+          Descargar CSV
+        </button>
+        <button class="btn ghost" id="btnClear" type="button" style="--btn-fg: var(--viva-magenta-dark);">
+          <span class="ic" aria-hidden="true">
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><path d="M3 6h18"/><path d="M8 6V4h8v2"/><path d="M6 6l1 14h10l1-14"/></svg>
+          </span>
+          Limpiar
+        </button>
+      </div>
+    </div>
+
+    <div class="table-wrap" style="margin-top: 14px;">
+      <table class="records" id="recordsTable">
+        <thead>
+          <tr>
+            <th>Fecha / Hora</th>
+            <th>Vuelo</th>
+            <th>FR (KG)</th>
+            <th>FOB (KG)</th>
+            <th>Total (KG)</th>
+            <th>Densidad</th>
+            <th>Rango (L)</th>
+            <th>Estado</th>
+          </tr>
+        </thead>
+        <tbody id="recordsBody"></tbody>
+      </table>
+      <div class="empty" id="emptyState">
+        <div class="ic" aria-hidden="true">
+          <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M3 7h18"/><path d="M3 12h18"/><path d="M3 17h12"/></svg>
+        </div>
+        <h4>Sin registros todavía</h4>
+        <p>Cuando registres una carga aparecerá acá.</p>
+      </div>
+    </div>
+  </section>
+
+</main>
+
+<footer class="foot">
+  <div><span class="stripe" aria-hidden="true"></span> Viva Aerobus · Fuel Operations · Documento operacional interno</div>
+  <div id="buildInfo">v1.0 · offline-ready</div>
+</footer>
+
+<div class="toast" id="toast" role="status" aria-live="polite">
+  <span class="dot" aria-hidden="true"></span>
+  <span id="toastMsg">Listo</span>
+</div>
+
+<script>
+(function () {
+  'use strict';
+
+  // ====================== Constantes (configurables) ======================
+  const KG_TOLERANCE = 200;        // kg de tolerancia que se suman antes de convertir a litros
+  const DISCREPANCY_PCT = 0.0175;  // ±1.75% del rango de discrepancia
+  const STORAGE_KEY = 'viva_fuel_records';
+  const MAX_RECORDS = 500;         // tope para no inflar localStorage
+
+  // ====================== DOM ======================
+  const $ = (id) => document.getElementById(id);
+  const flightEl  = $('flight');
+  const frEl      = $('fr');
+  const fobEl     = $('fob');
+  const densityEl = $('density');
+
+  const rTotalKg  = $('rTotalKg');
+  const rTotalL   = $('rTotalL');
+  const rLow      = $('rLow');
+  const rHigh     = $('rHigh');
+  const metaDensity = $('metaDensity');
+
+  const btnSave     = $('btnSave');
+  const btnNoInfo   = $('btnNoInfo');
+  const btnDownload = $('btnDownload');
+  const btnClear    = $('btnClear');
+
+  const recordsBody = $('recordsBody');
+  const emptyState  = $('emptyState');
+  const tableEl     = $('recordsTable');
+
+  const toastEl = $('toast');
+  const toastMsg = $('toastMsg');
+
+  // ====================== Helpers ======================
+  function fmtNumber(n, decimals) {
+    if (!Number.isFinite(n)) return '—';
+    return n.toLocaleString('es-MX', {
+      minimumFractionDigits: decimals,
+      maximumFractionDigits: decimals
+    });
+  }
+  function fmtInt(n) { return fmtNumber(n, 0); }
+  function fmtL(n)   { return fmtNumber(n, 0); }
+  function fmtDensity(n) { return fmtNumber(n, 3); }
+
+  function pad(n) { return n < 10 ? '0' + n : '' + n; }
+  function fmtDateTime(d) {
+    return pad(d.getDate()) + '/' + pad(d.getMonth()+1) + '/' + d.getFullYear()
+      + ' ' + pad(d.getHours()) + ':' + pad(d.getMinutes());
+  }
+  function fmtISO(d) {
+    return d.getFullYear() + '-' + pad(d.getMonth()+1) + '-' + pad(d.getDate())
+      + 'T' + pad(d.getHours()) + ':' + pad(d.getMinutes()) + ':' + pad(d.getSeconds());
+  }
+  function todayFile() {
+    const d = new Date();
+    return d.getFullYear() + '-' + pad(d.getMonth()+1) + '-' + pad(d.getDate());
+  }
+
+  function showToast(msg, kind) {
+    toastMsg.textContent = msg;
+    toastEl.classList.toggle('warn', kind === 'warn');
+    toastEl.classList.add('show');
+    clearTimeout(showToast._t);
+    showToast._t = setTimeout(() => toastEl.classList.remove('show'), 2400);
+  }
+
+  function setError(fieldId, hasError) {
+    const f = document.getElementById(fieldId);
+    if (!f) return;
+    f.classList.toggle('has-error', !!hasError);
+    const wrap = f.querySelector('.input-wrap');
+    if (wrap) wrap.classList.toggle('error', !!hasError);
+  }
+  function clearAllErrors() {
+    ['f-flight','f-fr','f-fob','f-density'].forEach(id => setError(id, false));
+  }
+
+  // ====================== Live calc ======================
+  function readInputs() {
+    const flight  = (flightEl.value || '').trim().toUpperCase();
+    const fr      = parseFloat(frEl.value);
+    const fob     = parseFloat(fobEl.value);
+    const density = parseFloat(densityEl.value);
+    return { flight, fr, fob, density };
+  }
+
+  function compute({ fr, fob, density }) {
+    const valid = Number.isFinite(fr) && Number.isFinite(fob) && Number.isFinite(density)
+      && density > 0 && fob > fr;
+    if (!valid) return null;
+    const totalKg = fob - fr;
+    const totalL  = (totalKg + KG_TOLERANCE) / density;
+    const low     = totalL * (1 - DISCREPANCY_PCT);
+    const high    = totalL * (1 + DISCREPANCY_PCT);
+    return { totalKg, totalL, low, high };
+  }
+
+  function updateLive() {
+    const { density } = readInputs();
+    const result = compute(readInputs());
+
+    if (result) {
+      rTotalKg.textContent = fmtInt(result.totalKg);
+      rTotalL.textContent  = fmtL(result.totalL);
+      rLow.textContent     = fmtL(result.low);
+      rHigh.textContent    = fmtL(result.high);
+      [rTotalKg, rTotalL, rLow, rHigh].forEach(el => {
+        el.classList.remove('pop');
+        // force reflow to retrigger animation
+        void el.offsetWidth;
+        el.classList.add('pop');
+      });
+    } else {
+      rTotalKg.textContent = '—';
+      rTotalL.textContent  = '—';
+      rLow.textContent     = '—';
+      rHigh.textContent    = '—';
+    }
+    metaDensity.textContent = Number.isFinite(density) && density > 0
+      ? 'Densidad: ' + fmtDensity(density) + ' kg/L'
+      : 'Densidad: —';
+  }
+
+  ;['input','change'].forEach(evt => {
+    flightEl.addEventListener(evt, () => {
+      flightEl.value = flightEl.value.toUpperCase();
+      setError('f-flight', false);
+    });
+    [frEl, fobEl, densityEl].forEach(el => el.addEventListener(evt, () => {
+      clearAllErrors();
+      updateLive();
+    }));
+  });
+
+  // ====================== Validation ======================
+  function validateForSave() {
+    const { flight, fr, fob, density } = readInputs();
+    let ok = true;
+    clearAllErrors();
+    if (!flight) { setError('f-flight', true); ok = false; }
+    if (!Number.isFinite(fr) || fr < 0) { setError('f-fr', true); ok = false; }
+    if (!Number.isFinite(fob) || fob <= 0) { setError('f-fob', true); ok = false; }
+    if (Number.isFinite(fr) && Number.isFinite(fob) && fob <= fr) { setError('f-fob', true); ok = false; }
+    if (!Number.isFinite(density) || density <= 0) { setError('f-density', true); ok = false; }
+    return ok;
+  }
+
+  function validateForNoInfo() {
+    const { flight } = readInputs();
+    clearAllErrors();
+    if (!flight) { setError('f-flight', true); return false; }
+    return true;
+  }
+
+  // ====================== Storage ======================
+  function loadRecords() {
+    try {
+      const raw = localStorage.getItem(STORAGE_KEY);
+      if (!raw) return [];
+      const arr = JSON.parse(raw);
+      return Array.isArray(arr) ? arr : [];
+    } catch (e) { return []; }
+  }
+  function saveRecords(records) {
+    try {
+      localStorage.setItem(STORAGE_KEY, JSON.stringify(records.slice(0, MAX_RECORDS)));
+    } catch (e) {
+      showToast('No se pudo guardar (almacenamiento lleno)', 'warn');
+    }
+  }
+
+  function addRecord(record) {
+    const all = loadRecords();
+    all.unshift(record);
+    saveRecords(all);
+    renderRecords();
+  }
+
+  function clearRecords() {
+    saveRecords([]);
+    renderRecords();
+  }
+
+  // ====================== Render ======================
+  function escapeHtml(s) {
+    return String(s == null ? '' : s)
+      .replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;')
+      .replace(/"/g, '&quot;').replace(/'/g, '&#39;');
+  }
+
+  function renderRecords() {
+    const all = loadRecords();
+    if (all.length === 0) {
+      recordsBody.innerHTML = '';
+      tableEl.style.display = 'none';
+      emptyState.style.display = '';
+      return;
+    }
+    tableEl.style.display = '';
+    emptyState.style.display = 'none';
+
+    const rows = all.map(r => {
+      const isOk = r.status === 'OK';
+      const range = isOk
+        ? (fmtL(r.lowL) + ' – ' + fmtL(r.highL))
+        : '—';
+      const pill = isOk
+        ? '<span class="pill ok"><span class="d"></span>OK</span>'
+        : '<span class="pill no-info"><span class="d"></span>Sin info GH</span>';
+      return '<tr>' +
+        '<td>' + escapeHtml(r.dateTime) + '</td>' +
+        '<td class="flight">' + escapeHtml(r.flight) + '</td>' +
+        '<td>' + (isOk ? fmtInt(r.frKg) : '—') + '</td>' +
+        '<td>' + (isOk ? fmtInt(r.fobKg) : '—') + '</td>' +
+        '<td>' + (isOk ? fmtInt(r.totalKg) : '—') + '</td>' +
+        '<td>' + (isOk ? fmtDensity(r.density) : '—') + '</td>' +
+        '<td class="range">' + range + '</td>' +
+        '<td>' + pill + '</td>' +
+      '</tr>';
+    }).join('');
+    recordsBody.innerHTML = rows;
+  }
+
+  // ====================== Actions ======================
+  function handleSave() {
+    if (!validateForSave()) {
+      showToast('Revisá los datos del formulario', 'warn');
+      return;
+    }
+    const { flight, fr, fob, density } = readInputs();
+    const c = compute({ fr, fob, density });
+    if (!c) { showToast('No se pudo calcular', 'warn'); return; }
+    const now = new Date();
+    addRecord({
+      id: now.getTime(),
+      dateTime: fmtDateTime(now),
+      iso: fmtISO(now),
+      flight,
+      frKg: fr,
+      fobKg: fob,
+      totalKg: c.totalKg,
+      density,
+      totalL: c.totalL,
+      lowL: c.low,
+      highL: c.high,
+      status: 'OK'
+    });
+    showToast('Carga registrada · ' + flight);
+  }
+
+  function handleNoInfo() {
+    if (!validateForNoInfo()) {
+      showToast('Ingresá el número de vuelo', 'warn');
+      return;
+    }
+    const { flight, fr, fob, density } = readInputs();
+    const now = new Date();
+    addRecord({
+      id: now.getTime(),
+      dateTime: fmtDateTime(now),
+      iso: fmtISO(now),
+      flight,
+      frKg: Number.isFinite(fr) ? fr : null,
+      fobKg: Number.isFinite(fob) ? fob : null,
+      totalKg: null,
+      density: Number.isFinite(density) ? density : null,
+      totalL: null,
+      lowL: null,
+      highL: null,
+      status: 'NO_INFO'
+    });
+    showToast('Incidente registrado · ' + flight, 'warn');
+  }
+
+  // ====================== CSV ======================
+  function csvEscape(v) {
+    if (v == null) return '';
+    const s = String(v);
+    if (/[",;\n\r]/.test(s)) return '"' + s.replace(/"/g, '""') + '"';
+    return s;
+  }
+  function buildCsv(records) {
+    const headers = [
+      'Fecha/Hora', 'ISO', 'Vuelo', 'FR (KG)', 'FOB (KG)', 'Total (KG)',
+      'Densidad (kg/L)', 'Total (L)', 'Low (L)', 'High (L)', 'Estado'
+    ];
+    const lines = [headers.join(';')];
+    records.forEach(r => {
+      lines.push([
+        r.dateTime,
+        r.iso,
+        r.flight,
+        r.frKg != null ? r.frKg : '',
+        r.fobKg != null ? r.fobKg : '',
+        r.totalKg != null ? r.totalKg : '',
+        r.density != null ? r.density : '',
+        r.totalL != null ? r.totalL.toFixed(2) : '',
+        r.lowL  != null ? r.lowL.toFixed(2)  : '',
+        r.highL != null ? r.highL.toFixed(2) : '',
+        r.status === 'OK' ? 'OK' : 'Sin info ground handler'
+      ].map(csvEscape).join(';'));
+    });
+    return lines.join('\r\n');
+  }
+  function handleDownload() {
+    const all = loadRecords();
+    if (all.length === 0) {
+      showToast('No hay registros para exportar', 'warn');
+      return;
+    }
+    const csv = '\uFEFF' + buildCsv(all);
+    const blob = new Blob([csv], { type: 'text/csv;charset=utf-8' });
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement('a');
+    a.href = url;
+    a.download = 'viva_fuel_log_' + todayFile() + '.csv';
+    document.body.appendChild(a);
+    a.click();
+    document.body.removeChild(a);
+    setTimeout(() => URL.revokeObjectURL(url), 800);
+    showToast('CSV descargado · ' + all.length + ' registros');
+  }
+  function handleClear() {
+    const all = loadRecords();
+    if (all.length === 0) { showToast('No hay registros', 'warn'); return; }
+    const ok = window.confirm(
+      'Vas a borrar ' + all.length + ' registro' + (all.length === 1 ? '' : 's') + '. ' +
+      'Esta acción no se puede deshacer. ¿Continuar?'
+    );
+    if (!ok) return;
+    clearRecords();
+    showToast('Registros eliminados', 'warn');
+  }
+
+  // ====================== Clock ======================
+  const months = ['ENE','FEB','MAR','ABR','MAY','JUN','JUL','AGO','SEP','OCT','NOV','DIC'];
+  function tickClock() {
+    const d = new Date();
+    $('clockTime').textContent = pad(d.getHours()) + ':' + pad(d.getMinutes()) + ':' + pad(d.getSeconds());
+    $('clockDate').textContent = pad(d.getDate()) + ' ' + months[d.getMonth()] + ' ' + d.getFullYear();
+  }
+
+  // ====================== Boot ======================
+  btnSave.addEventListener('click', handleSave);
+  btnNoInfo.addEventListener('click', handleNoInfo);
+  btnDownload.addEventListener('click', handleDownload);
+  btnClear.addEventListener('click', handleClear);
+
+  flightEl.addEventListener('keydown', (e) => {
+    if (e.key === 'Enter') { e.preventDefault(); frEl.focus(); }
+  });
+  densityEl.addEventListener('keydown', (e) => {
+    if (e.key === 'Enter') { e.preventDefault(); btnSave.click(); }
+  });
+
+  tickClock();
+  setInterval(tickClock, 1000);
+  updateLive();
+  renderRecords();
+})();
+</script>
+
+</body>
+</html>
