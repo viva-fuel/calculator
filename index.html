@@ -229,17 +229,46 @@
   }
 
   .input-grid {
-    display: grid;
-    grid-template-columns: repeat(3, minmax(0, 1fr));
-    gap: 14px;
+    display: flex;
+    flex-direction: column;
+    gap: 22px;
     margin-top: 20px;
+    counter-reset: step;
   }
-  .input-grid .full { grid-column: 1 / -1; }
-  @media (max-width: 1200px) {
-    .input-grid input { font-size: 20px; }
-    .input-wrap input { padding: 12px 14px; }
-    .input-wrap .unit { padding: 0 12px 0 6px; font-size: 11px; }
+  .field {
+    position: relative;
+    counter-increment: step;
+    padding-left: 60px;
   }
+  .field::before {
+    content: counter(step, decimal-leading-zero);
+    position: absolute;
+    left: 0;
+    top: 0;
+    width: 44px;
+    height: 44px;
+    border-radius: 12px;
+    background: var(--ink);
+    color: white;
+    display: grid;
+    place-items: center;
+    font-family: var(--font-display);
+    font-weight: 700;
+    font-size: 16px;
+    letter-spacing: -0.02em;
+    box-shadow: 0 4px 10px -4px rgba(10, 14, 10, 0.35);
+  }
+  .field::after {
+    content: "";
+    position: absolute;
+    left: 22px;
+    top: 50px;
+    bottom: -22px;
+    width: 1px;
+    background: linear-gradient(to bottom, var(--line-strong), var(--line) 70%, transparent);
+    pointer-events: none;
+  }
+  .field:last-of-type::after { display: none; }
 
   .field {
     display: flex;
@@ -806,7 +835,10 @@
     .section-title { font-size: 26px; }
     .section-sub { font-size: 14px; }
     .calc-inputs, .calc-results { padding: 18px; }
-    .input-grid { grid-template-columns: 1fr; gap: 14px; }
+    .input-grid { gap: 18px; }
+    .field { padding-left: 52px; }
+    .field::before { width: 38px; height: 38px; font-size: 14px; border-radius: 10px; }
+    .field::after { left: 19px; top: 44px; bottom: -18px; }
     .input-wrap input { font-size: 20px; padding: 12px 14px; }
     .stat-row { grid-template-columns: 1fr; gap: 10px; }
     .stat .value { font-size: 22px; }
