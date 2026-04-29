@@ -602,6 +602,67 @@
     margin-bottom: 4px;
   }
   .records-head .actions { margin-top: 0; }
+  .records-meta {
+    display: flex;
+    align-items: center;
+    gap: 12px;
+    flex-wrap: wrap;
+    margin-bottom: 8px;
+  }
+  .cloud-status {
+    display: inline-flex;
+    align-items: center;
+    gap: 8px;
+    font-family: var(--font-mono);
+    font-size: 10px;
+    letter-spacing: 0.18em;
+    text-transform: uppercase;
+    color: var(--muted);
+    font-weight: 700;
+    padding: 6px 12px;
+    border: 1px solid var(--line);
+    border-radius: 999px;
+    background: var(--surface-alt);
+    white-space: nowrap;
+    transition: all 200ms ease;
+  }
+  .cloud-status .dot {
+    width: 7px; height: 7px; border-radius: 999px;
+    background: var(--muted);
+    flex-shrink: 0;
+  }
+  .cloud-status[data-status="syncing"] {
+    color: var(--viva-green-dark);
+    border-color: rgba(0, 138, 53, 0.25);
+    background: var(--viva-green-soft);
+  }
+  .cloud-status[data-status="syncing"] .dot {
+    background: var(--viva-green);
+    animation: cloudPulse 1.2s ease-in-out infinite;
+  }
+  .cloud-status[data-status="synced"] {
+    color: var(--viva-green-dark);
+    border-color: rgba(0, 138, 53, 0.25);
+    background: var(--viva-green-soft);
+  }
+  .cloud-status[data-status="synced"] .dot { background: var(--viva-green); }
+  .cloud-status[data-status="error"] {
+    color: var(--viva-magenta-dark);
+    border-color: rgba(191, 0, 112, 0.25);
+    background: var(--viva-magenta-soft);
+  }
+  .cloud-status[data-status="error"] .dot { background: var(--viva-magenta); }
+  @keyframes cloudPulse {
+    0%, 100% { opacity: 1; transform: scale(1); }
+    50% { opacity: 0.45; transform: scale(0.85); }
+  }
+  tr.row-pending td { opacity: 0.7; }
+  tr.row-pending td:first-child::before {
+    content: "·";
+    color: var(--viva-magenta);
+    font-weight: 900;
+    margin-right: 4px;
+  }
 
   .table-wrap {
     overflow: auto;
@@ -848,22 +909,22 @@
             <div class="field-error">FR debe ser un número válido.</div>
           </div>
 
-          <div class="field" id="f-fob">
-            <label for="fob">FOB — Fuel On Board</label>
-            <div class="input-wrap">
-              <input id="fob" type="number" inputmode="decimal" min="0" step="any" placeholder="0" />
-              <span class="unit">KG</span>
-            </div>
-            <div class="field-error">FOB debe ser mayor que FR.</div>
-          </div>
-
-          <div class="field full" id="f-density">
-            <label for="density">Densidad <span class="hint">— Reportada por ground handler</span></label>
+          <div class="field" id="f-density">
+            <label for="density">Densidad <span class="hint">— Ground handler</span></label>
             <div class="input-wrap">
               <input id="density" type="number" inputmode="decimal" min="0" step="0.001" placeholder="0.793" />
               <span class="unit">kg/L</span>
             </div>
             <div class="field-error">La densidad debe ser mayor que cero.</div>
+          </div>
+
+          <div class="field full" id="f-fob">
+            <label for="fob">FOB — Fuel On Board <span class="hint">— Último dato a solicitar</span></label>
+            <div class="input-wrap">
+              <input id="fob" type="number" inputmode="decimal" min="0" step="any" placeholder="0" />
+              <span class="unit">KG</span>
+            </div>
+            <div class="field-error">FOB debe ser mayor que FR.</div>
           </div>
         </div>
       </div>
@@ -928,11 +989,23 @@
   <section aria-labelledby="rec-title">
     <div class="records-head">
       <div>
-        <div class="section-tag">02 · Registro</div>
+        <div class="records-meta">
+          <div class="section-tag">02 · Registro</div>
+          <span class="cloud-status" id="cloudStatus" data-status="local" title="Estado de sincronización con la nube">
+            <span class="dot" aria-hidden="true"></span>
+            <span class="lbl">Modo local</span>
+          </span>
+        </div>
         <h2 id="rec-title" class="section-title" style="font-size: clamp(22px, 2.6vw, 30px);">Histórico de cargas</h2>
-        <p class="section-sub">Todos los cálculos quedan guardados en este dispositivo. Descargalos como CSV para enviar o archivar.</p>
+        <p class="section-sub" id="recordsSub">Todos los cálculos quedan guardados en este dispositivo. Descargalos como CSV para enviar o archivar.</p>
       </div>
       <div class="actions">
+        <button class="btn ghost" id="btnRefresh" type="button" hidden>
+          <span class="ic" aria-hidden="true">
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 12a9 9 0 1 1-3-6.7"/><path d="M21 4v5h-5"/></svg>
+          </span>
+          Refrescar
+        </button>
         <button class="btn ghost" id="btnDownload" type="button">
           <span class="ic" aria-hidden="true">
             <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 4v12"/><path d="M7 11l5 5 5-5"/><path d="M5 20h14"/></svg>
@@ -996,6 +1069,13 @@
   const STORAGE_KEY = 'viva_fuel_records';
   const MAX_RECORDS = 500;         // tope para no inflar localStorage
 
+  // ====================== Sincronización con Google Sheets ======================
+  // Pegá acá la URL de tu Apps Script Web App (terminada en /exec).
+  // Si lo dejás vacío, los registros solo se guardan en este dispositivo (modo local).
+  // Ver CONFIGURAR_SHEETS.md para los pasos de setup (5 minutos).
+  const SHEETS_WEBAPP_URL = '';
+  const AUTO_REFRESH_MS   = 30000; // refresca el histórico cada 30s cuando hay nube
+
   // ====================== DOM ======================
   const $ = (id) => document.getElementById(id);
   const flightEl  = $('flight');
@@ -1013,10 +1093,13 @@
   const btnNoInfo   = $('btnNoInfo');
   const btnDownload = $('btnDownload');
   const btnClear    = $('btnClear');
+  const btnRefresh  = $('btnRefresh');
 
   const recordsBody = $('recordsBody');
   const emptyState  = $('emptyState');
   const tableEl     = $('recordsTable');
+  const cloudStatusEl = $('cloudStatus');
+  const recordsSubEl  = $('recordsSub');
 
   const toastEl = $('toast');
   const toastMsg = $('toastMsg');
@@ -1143,8 +1226,12 @@
     return true;
   }
 
-  // ====================== Storage ======================
-  function loadRecords() {
+  // ====================== Estado ======================
+  let records = [];           // cache en memoria, fuente para renderizar
+  let cloudConfigured = false;
+
+  // ====================== LocalStorage ======================
+  function loadLocal() {
     try {
       const raw = localStorage.getItem(STORAGE_KEY);
       if (!raw) return [];
@@ -1152,23 +1239,140 @@
       return Array.isArray(arr) ? arr : [];
     } catch (e) { return []; }
   }
-  function saveRecords(records) {
+  function saveLocal(arr) {
     try {
-      localStorage.setItem(STORAGE_KEY, JSON.stringify(records.slice(0, MAX_RECORDS)));
+      localStorage.setItem(STORAGE_KEY, JSON.stringify(arr.slice(0, MAX_RECORDS)));
     } catch (e) {
-      showToast('No se pudo guardar (almacenamiento lleno)', 'warn');
+      showToast('No se pudo guardar local (almacenamiento lleno)', 'warn');
     }
   }
 
-  function addRecord(record) {
-    const all = loadRecords();
-    all.unshift(record);
-    saveRecords(all);
-    renderRecords();
+  // ====================== Cloud (Google Sheets via Apps Script) ======================
+  function isCloudConfigured() {
+    return typeof SHEETS_WEBAPP_URL === 'string'
+      && /^https:\/\/script\.google\.com\/.+\/exec/.test(SHEETS_WEBAPP_URL);
   }
 
-  function clearRecords() {
-    saveRecords([]);
+  async function cloudFetchRecords() {
+    const sep = SHEETS_WEBAPP_URL.includes('?') ? '&' : '?';
+    const url = SHEETS_WEBAPP_URL + sep + 'action=list&t=' + Date.now();
+    const resp = await fetch(url, { method: 'GET', cache: 'no-store' });
+    if (!resp.ok) throw new Error('HTTP ' + resp.status);
+    const data = await resp.json();
+    return Array.isArray(data && data.records) ? data.records : [];
+  }
+
+  async function cloudPushRecord(record) {
+    // text/plain evita el preflight CORS — Apps Script igual parsea con JSON.parse
+    const body = JSON.stringify({ action: 'add', record });
+    const resp = await fetch(SHEETS_WEBAPP_URL, {
+      method: 'POST',
+      headers: { 'Content-Type': 'text/plain;charset=utf-8' },
+      body: body
+    });
+    if (!resp.ok) throw new Error('HTTP ' + resp.status);
+    try { await resp.json(); } catch (e) { /* ignore body */ }
+    return true;
+  }
+
+  function setCloudStatus(status) {
+    if (!cloudStatusEl) return;
+    cloudStatusEl.setAttribute('data-status', status);
+    const lblEl = cloudStatusEl.querySelector('.lbl');
+    if (!lblEl) return;
+    if (status === 'syncing')      lblEl.textContent = 'Sincronizando…';
+    else if (status === 'synced')  lblEl.textContent = 'Sincronizado · nube';
+    else if (status === 'error')   lblEl.textContent = 'Sin conexión';
+    else                            lblEl.textContent = 'Modo local';
+  }
+
+  function mergeRecords(localArr, cloudArr) {
+    const cloudIds = new Set(cloudArr.map(r => String(r.id)));
+    const cloudNormalized = cloudArr.map(r => ({ ...r, synced: true }));
+    const localOnly = localArr.filter(r => !cloudIds.has(String(r.id)));
+    const merged = cloudNormalized.concat(localOnly);
+    merged.sort((a, b) => Number(b.id) - Number(a.id));
+    return merged;
+  }
+
+  async function pushPending() {
+    const pending = records.filter(r => !r.synced && r.id != null);
+    if (pending.length === 0) return 0;
+    let pushed = 0;
+    for (const r of pending) {
+      try {
+        await cloudPushRecord(r);
+        r.synced = true;
+        pushed++;
+      } catch (e) { /* deja como pending para el próximo intento */ }
+    }
+    if (pushed > 0) saveLocal(records);
+    return pushed;
+  }
+
+  async function initialSync() {
+    records = loadLocal();
+    renderRecords();
+
+    if (!cloudConfigured) {
+      setCloudStatus('local');
+      return;
+    }
+
+    setCloudStatus('syncing');
+    try {
+      const cloudArr = await cloudFetchRecords();
+      records = mergeRecords(records, cloudArr);
+      saveLocal(records);
+      renderRecords();
+      const pushed = await pushPending();
+      setCloudStatus('synced');
+      if (pushed > 0) showToast(pushed + ' registro' + (pushed === 1 ? '' : 's') + ' pendiente sincronizado');
+    } catch (e) {
+      setCloudStatus('error');
+    }
+  }
+
+  async function refreshFromCloud(silent) {
+    if (!cloudConfigured) return;
+    setCloudStatus('syncing');
+    try {
+      const cloudArr = await cloudFetchRecords();
+      records = mergeRecords(records, cloudArr);
+      saveLocal(records);
+      renderRecords();
+      await pushPending();
+      setCloudStatus('synced');
+      if (!silent) showToast('Histórico actualizado · ' + records.length + ' registros');
+    } catch (e) {
+      setCloudStatus('error');
+      if (!silent) showToast('No se pudo conectar con la nube', 'warn');
+    }
+  }
+
+  async function addRecord(record) {
+    records.unshift(Object.assign({ synced: false }, record));
+    saveLocal(records);
+    renderRecords();
+
+    if (!cloudConfigured) return;
+
+    setCloudStatus('syncing');
+    try {
+      await cloudPushRecord(record);
+      const r = records.find(x => x.id === record.id);
+      if (r) r.synced = true;
+      saveLocal(records);
+      renderRecords();
+      setCloudStatus('synced');
+    } catch (e) {
+      setCloudStatus('error');
+    }
+  }
+
+  function clearLocal() {
+    records = [];
+    saveLocal(records);
     renderRecords();
   }
 
@@ -1180,8 +1384,7 @@
   }
 
   function renderRecords() {
-    const all = loadRecords();
-    if (all.length === 0) {
+    if (records.length === 0) {
       recordsBody.innerHTML = '';
       tableEl.style.display = 'none';
       emptyState.style.display = '';
@@ -1190,15 +1393,17 @@
     tableEl.style.display = '';
     emptyState.style.display = 'none';
 
-    const rows = all.map(r => {
+    const rows = records.map(r => {
       const isOk = r.status === 'OK';
+      const isPending = cloudConfigured && r.synced === false;
       const range = isOk
         ? (fmtL(r.lowL) + ' – ' + fmtL(r.highL))
         : '—';
       const pill = isOk
         ? '<span class="pill ok"><span class="d"></span>OK</span>'
         : '<span class="pill no-info"><span class="d"></span>Sin info GH</span>';
-      return '<tr>' +
+      const trClass = isPending ? ' class="row-pending" title="Pendiente de sincronizar con la nube"' : '';
+      return '<tr' + trClass + '>' +
         '<td>' + escapeHtml(r.dateTime) + '</td>' +
         '<td class="flight">' + escapeHtml(r.flight) + '</td>' +
         '<td>' + (isOk ? fmtInt(r.frKg) : '—') + '</td>' +
@@ -1213,7 +1418,7 @@
   }
 
   // ====================== Actions ======================
-  function handleSave() {
+  async function handleSave() {
     if (!validateForSave()) {
       showToast('Revisá los datos del formulario', 'warn');
       return;
@@ -1222,35 +1427,36 @@
     const c = compute({ fr, fob, density });
     if (!c) { showToast('No se pudo calcular', 'warn'); return; }
     const now = new Date();
-    addRecord({
+    const record = {
       id: now.getTime(),
       dateTime: fmtDateTime(now),
       iso: fmtISO(now),
-      flight,
+      flight: flight,
       frKg: fr,
       fobKg: fob,
       totalKg: c.totalKg,
-      density,
+      density: density,
       totalL: c.totalL,
       lowL: c.low,
       highL: c.high,
       status: 'OK'
-    });
+    };
     showToast('Carga registrada · ' + flight);
+    await addRecord(record);
   }
 
-  function handleNoInfo() {
+  async function handleNoInfo() {
     if (!validateForNoInfo()) {
       showToast('Ingresá el número de vuelo', 'warn');
       return;
     }
     const { flight, fr, fob, density } = readInputs();
     const now = new Date();
-    addRecord({
+    const record = {
       id: now.getTime(),
       dateTime: fmtDateTime(now),
       iso: fmtISO(now),
-      flight,
+      flight: flight,
       frKg: Number.isFinite(fr) ? fr : null,
       fobKg: Number.isFinite(fob) ? fob : null,
       totalKg: null,
@@ -1259,8 +1465,9 @@
       lowL: null,
       highL: null,
       status: 'NO_INFO'
-    });
+    };
     showToast('Incidente registrado · ' + flight, 'warn');
+    await addRecord(record);
   }
 
   // ====================== CSV ======================
@@ -1294,12 +1501,11 @@
     return lines.join('\r\n');
   }
   function handleDownload() {
-    const all = loadRecords();
-    if (all.length === 0) {
+    if (records.length === 0) {
       showToast('No hay registros para exportar', 'warn');
       return;
     }
-    const csv = '\uFEFF' + buildCsv(all);
+    const csv = '\uFEFF' + buildCsv(records);
     const blob = new Blob([csv], { type: 'text/csv;charset=utf-8' });
     const url = URL.createObjectURL(blob);
     const a = document.createElement('a');
@@ -1309,18 +1515,24 @@
     a.click();
     document.body.removeChild(a);
     setTimeout(() => URL.revokeObjectURL(url), 800);
-    showToast('CSV descargado · ' + all.length + ' registros');
+    showToast('CSV descargado · ' + records.length + ' registros');
   }
   function handleClear() {
-    const all = loadRecords();
-    if (all.length === 0) { showToast('No hay registros', 'warn'); return; }
-    const ok = window.confirm(
-      'Vas a borrar ' + all.length + ' registro' + (all.length === 1 ? '' : 's') + '. ' +
-      'Esta acción no se puede deshacer. ¿Continuar?'
-    );
+    if (records.length === 0) { showToast('No hay registros', 'warn'); return; }
+    const msg = cloudConfigured
+      ? 'Esto solo limpia la vista local. Los registros siguen en el Sheet compartido y volverán al refrescar. ¿Continuar?'
+      : 'Vas a borrar ' + records.length + ' registro' + (records.length === 1 ? '' : 's') + '. Esta acción no se puede deshacer. ¿Continuar?';
+    const ok = window.confirm(msg);
     if (!ok) return;
-    clearRecords();
-    showToast('Registros eliminados', 'warn');
+    clearLocal();
+    showToast(cloudConfigured ? 'Vista local limpiada' : 'Registros eliminados', 'warn');
+  }
+  async function handleRefresh() {
+    if (!cloudConfigured) {
+      showToast('Sync con nube no configurado', 'warn');
+      return;
+    }
+    await refreshFromCloud(false);
   }
 
   // ====================== Clock ======================
@@ -1336,18 +1548,41 @@
   btnNoInfo.addEventListener('click', handleNoInfo);
   btnDownload.addEventListener('click', handleDownload);
   btnClear.addEventListener('click', handleClear);
+  if (btnRefresh) btnRefresh.addEventListener('click', handleRefresh);
 
   flightEl.addEventListener('keydown', (e) => {
     if (e.key === 'Enter') { e.preventDefault(); frEl.focus(); }
   });
+  frEl.addEventListener('keydown', (e) => {
+    if (e.key === 'Enter') { e.preventDefault(); densityEl.focus(); }
+  });
   densityEl.addEventListener('keydown', (e) => {
+    if (e.key === 'Enter') { e.preventDefault(); fobEl.focus(); }
+  });
+  fobEl.addEventListener('keydown', (e) => {
     if (e.key === 'Enter') { e.preventDefault(); btnSave.click(); }
   });
+
+  // Cuando la pestaña vuelve a estar visible, refrescar (en modo cloud)
+  document.addEventListener('visibilitychange', () => {
+    if (document.visibilityState === 'visible' && cloudConfigured) {
+      refreshFromCloud(true);
+    }
+  });
+
+  cloudConfigured = isCloudConfigured();
+  if (cloudConfigured) {
+    if (btnRefresh) btnRefresh.hidden = false;
+    if (recordsSubEl) {
+      recordsSubEl.textContent = 'Histórico compartido entre todos los pilotos vía Google Sheets. Se actualiza automáticamente cada 30 s.';
+    }
+    setInterval(() => refreshFromCloud(true), AUTO_REFRESH_MS);
+  }
 
   tickClock();
   setInterval(tickClock, 1000);
   updateLive();
-  renderRecords();
+  initialSync();
 })();
 </script>
 
