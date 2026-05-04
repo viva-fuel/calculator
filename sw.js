@@ -14,7 +14,7 @@
  * en dispositivos que ya tienen la SW vieja instalada.
  */
 
-const CACHE_VERSION = 'viva-fuel-v3';
+const CACHE_VERSION = 'viva-fuel-v4';
 const SHELL_CACHE   = CACHE_VERSION + '-shell';
 const RUNTIME_CACHE = CACHE_VERSION + '-runtime';
 

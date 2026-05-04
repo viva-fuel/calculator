@@ -228,6 +228,83 @@
     .calc-inputs { border-right: 0; border-bottom: 1px solid var(--line); }
   }
 
+  /* ======================== PILOT SESSION PILL ======================== */
+  .pilot-session {
+    display: flex;
+    align-items: center;
+    gap: 14px;
+    padding: 12px 16px;
+    margin-bottom: 22px;
+    background: var(--ink);
+    color: white;
+    border-radius: var(--radius-md);
+    position: relative;
+    overflow: hidden;
+  }
+  .pilot-session::before {
+    content: "";
+    position: absolute;
+    inset: 0;
+    background: radial-gradient(120% 200% at 0% 50%, rgba(115, 201, 0, 0.18) 0%, transparent 60%);
+    pointer-events: none;
+  }
+  .pilot-session > * { position: relative; }
+  .pilot-label {
+    font-family: var(--font-mono);
+    font-size: 10px;
+    letter-spacing: 0.24em;
+    text-transform: uppercase;
+    color: var(--viva-green-light);
+    font-weight: 700;
+    flex-shrink: 0;
+  }
+  .pilot-session input {
+    background: transparent;
+    border: none;
+    color: white;
+    font-family: var(--font-display);
+    font-weight: 700;
+    font-size: 18px;
+    letter-spacing: -0.01em;
+    flex: 1 1 0;
+    min-width: 0;
+    outline: none;
+    padding: 4px 0;
+    text-transform: uppercase;
+  }
+  .pilot-session input::placeholder {
+    color: rgba(255, 255, 255, 0.38);
+    font-weight: 500;
+    text-transform: none;
+    letter-spacing: -0.01em;
+    font-size: 15px;
+  }
+  .pilot-session input:focus {
+    box-shadow: inset 0 -2px 0 0 var(--viva-green-light);
+  }
+  .pilot-hint {
+    font-family: var(--font-mono);
+    font-size: 9px;
+    letter-spacing: 0.18em;
+    text-transform: uppercase;
+    color: rgba(255, 255, 255, 0.4);
+    font-weight: 600;
+    white-space: nowrap;
+    flex-shrink: 0;
+  }
+  .pilot-session.has-error {
+    background: var(--viva-magenta-dark);
+  }
+  .pilot-session.has-error .pilot-label {
+    color: white;
+  }
+  @media (max-width: 720px) {
+    .pilot-session { padding: 10px 14px; gap: 10px; margin-bottom: 18px; }
+    .pilot-session input { font-size: 16px; }
+    .pilot-session input::placeholder { font-size: 13px; }
+    .pilot-hint { display: none; }
+  }
+
   .input-grid {
     display: flex;
     flex-direction: column;
@@ -944,6 +1021,12 @@
 
     <div class="card calc-card" style="margin-top: 18px;">
       <div class="calc-inputs">
+        <div class="pilot-session" id="pilotSession">
+          <span class="pilot-label">Pilot</span>
+          <input id="pilotId" type="text" placeholder="Type your ID (e.g. VB-1234)"
+                 autocomplete="off" autocapitalize="characters" spellcheck="false" maxlength="24" />
+          <span class="pilot-hint">remembered on this device</span>
+        </div>
         <div class="section-tag">Flight data</div>
         <div class="input-grid">
           <div class="field full" id="f-flight">
@@ -1083,6 +1166,7 @@
         <thead>
           <tr>
             <th>Date / Time</th>
+            <th>Pilot</th>
             <th>Flight</th>
             <th>FR (KG)</th>
             <th>FOB (KG)</th>
@@ -1124,6 +1208,7 @@
   const KG_TOLERANCE = 200;        // kg de tolerancia que se suman antes de convertir a litros
   const DISCREPANCY_PCT = 0.0175;  // ±1.75% del rango de discrepancia
   const STORAGE_KEY = 'viva_fuel_records';
+  const PILOT_KEY   = 'viva_fuel_pilot_id'; // ID del piloto en este dispositivo
   const MAX_RECORDS = 500;         // tope para no inflar localStorage
 
   // ====================== Sync con SharePoint Excel (vía Power Automate) ======================
@@ -1135,6 +1220,8 @@
 
   // ====================== DOM ======================
   const $ = (id) => document.getElementById(id);
+  const pilotIdEl  = $('pilotId');
+  const pilotSessionEl = $('pilotSession');
   const flightEl  = $('flight');
   const frEl      = $('fr');
   const fobEl     = $('fob');
@@ -1207,6 +1294,27 @@
     ['f-flight','f-fr','f-fob','f-density'].forEach(id => setError(id, false));
   }
 
+  // ====================== Pilot session ======================
+  function getPilotId() {
+    return ((pilotIdEl && pilotIdEl.value) || '').trim().toUpperCase();
+  }
+  function loadPilotId() {
+    try {
+      const v = localStorage.getItem(PILOT_KEY) || '';
+      if (pilotIdEl) pilotIdEl.value = v.toUpperCase();
+    } catch (e) { /* ignore */ }
+  }
+  function savePilotId() {
+    try {
+      const v = getPilotId();
+      if (v) localStorage.setItem(PILOT_KEY, v);
+      else localStorage.removeItem(PILOT_KEY);
+    } catch (e) { /* ignore */ }
+  }
+  function setPilotError(hasError) {
+    if (pilotSessionEl) pilotSessionEl.classList.toggle('has-error', !!hasError);
+  }
+
   // ====================== Live calc ======================
   function readInputs() {
     const flight  = (flightEl.value || '').trim().toUpperCase();
@@ -1262,6 +1370,13 @@
       clearAllErrors();
       updateLive();
     }));
+    if (pilotIdEl) {
+      pilotIdEl.addEventListener(evt, () => {
+        pilotIdEl.value = pilotIdEl.value.toUpperCase();
+        setPilotError(false);
+        savePilotId();
+      });
+    }
   });
 
   // ====================== Validation ======================
@@ -1269,6 +1384,8 @@
     const { flight, fr, fob, density } = readInputs();
     let ok = true;
     clearAllErrors();
+    setPilotError(false);
+    if (!getPilotId()) { setPilotError(true); ok = false; }
     if (!flight) { setError('f-flight', true); ok = false; }
     if (!Number.isFinite(fr) || fr < 0) { setError('f-fr', true); ok = false; }
     if (!Number.isFinite(fob) || fob <= 0) { setError('f-fob', true); ok = false; }
@@ -1280,8 +1397,11 @@
   function validateForNoInfo() {
     const { flight } = readInputs();
     clearAllErrors();
-    if (!flight) { setError('f-flight', true); return false; }
-    return true;
+    setPilotError(false);
+    let ok = true;
+    if (!getPilotId()) { setPilotError(true); ok = false; }
+    if (!flight) { setError('f-flight', true); ok = false; }
+    return ok;
   }
 
   // ====================== Estado ======================
@@ -1316,6 +1436,7 @@
   function toWire(r) {
     return {
       timestamp: r.iso || r.dateTime || '',
+      pilotId: r.pilotId || '',
       flight: r.flight || '',
       fr:      Number.isFinite(r.frKg)    ? r.frKg    : null,
       fob:     Number.isFinite(r.fobKg)   ? r.fobKg   : null,
@@ -1349,6 +1470,7 @@
       id: r.id != null ? r.id : Date.now(),
       dateTime,
       iso,
+      pilotId: String(r.pilotId || ''),
       flight:  String(r.flight || ''),
       frKg:    num(r.fr),
       fobKg:   num(r.fob),
@@ -1576,8 +1698,10 @@
         ? '<span class="pill ok"><span class="d"></span>OK</span>'
         : '<span class="pill no-info"><span class="d"></span>No GH info</span>';
       const trClass = isPending ? ' class="row-pending" title="Pending cloud sync"' : '';
+      const pilotCell = r.pilotId ? escapeHtml(r.pilotId) : '<span style="color: var(--line-strong)">—</span>';
       return '<tr' + trClass + '>' +
         '<td>' + escapeHtml(r.dateTime) + '</td>' +
+        '<td class="flight">' + pilotCell + '</td>' +
         '<td class="flight">' + escapeHtml(r.flight) + '</td>' +
         '<td>' + (isOk ? fmtInt(r.frKg) : '—') + '</td>' +
         '<td>' + (isOk ? fmtInt(r.fobKg) : '—') + '</td>' +
@@ -1593,7 +1717,9 @@
   // ====================== Actions ======================
   async function handleSave() {
     if (!validateForSave()) {
-      showToast('Please review the form', 'warn');
+      const reason = !getPilotId() ? 'Enter your Pilot ID first' : 'Please review the form';
+      showToast(reason, 'warn');
+      if (!getPilotId() && pilotIdEl) pilotIdEl.focus();
       return;
     }
     const { flight, fr, fob, density } = readInputs();
@@ -1604,6 +1730,7 @@
       id: now.getTime(),
       dateTime: fmtDateTime(now),
       iso: fmtISO(now),
+      pilotId: getPilotId(),
       flight: flight,
       frKg: fr,
       fobKg: fob,
@@ -1620,7 +1747,9 @@
 
   async function handleNoInfo() {
     if (!validateForNoInfo()) {
-      showToast('Enter the flight number', 'warn');
+      const reason = !getPilotId() ? 'Enter your Pilot ID first' : 'Enter the flight number';
+      showToast(reason, 'warn');
+      if (!getPilotId() && pilotIdEl) pilotIdEl.focus();
       return;
     }
     const { flight, fr, fob, density } = readInputs();
@@ -1629,6 +1758,7 @@
       id: now.getTime(),
       dateTime: fmtDateTime(now),
       iso: fmtISO(now),
+      pilotId: getPilotId(),
       flight: flight,
       frKg: Number.isFinite(fr) ? fr : null,
       fobKg: Number.isFinite(fob) ? fob : null,
@@ -1652,7 +1782,7 @@
   }
   function buildCsv(records) {
     const headers = [
-      'Date/Time', 'ISO', 'Flight', 'FR (KG)', 'FOB (KG)', 'Total (KG)',
+      'Date/Time', 'ISO', 'Pilot ID', 'Flight', 'FR (KG)', 'FOB (KG)', 'Total (KG)',
       'Density (kg/L)', 'Total (L)', 'Low (L)', 'High (L)', 'Status'
     ];
     const lines = [headers.join(';')];
@@ -1660,6 +1790,7 @@
       lines.push([
         r.dateTime,
         r.iso,
+        r.pilotId || '',
         r.flight,
         r.frKg != null ? r.frKg : '',
         r.fobKg != null ? r.fobKg : '',
@@ -1723,6 +1854,11 @@
   btnClear.addEventListener('click', handleClear);
   if (btnRefresh) btnRefresh.addEventListener('click', handleRefresh);
 
+  if (pilotIdEl) {
+    pilotIdEl.addEventListener('keydown', (e) => {
+      if (e.key === 'Enter') { e.preventDefault(); flightEl.focus(); }
+    });
+  }
   flightEl.addEventListener('keydown', (e) => {
     if (e.key === 'Enter') { e.preventDefault(); frEl.focus(); }
   });
@@ -1767,6 +1903,7 @@
 
   tickClock();
   setInterval(tickClock, 1000);
+  loadPilotId();
   updateLive();
   initialSync();
 
