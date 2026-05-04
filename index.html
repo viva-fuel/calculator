@@ -405,6 +405,9 @@
     letter-spacing: 0.01em;
   }
   .input-wrap input::placeholder { color: #B7BCB1; font-weight: 400; }
+  /* Numeric integers (FR/FOB) y density: alineación a la derecha para que la
+     coma de miles y el punto decimal queden visualmente alineados al unit. */
+  #fr, #fob, #density { text-align: right; font-variant-numeric: tabular-nums; }
   .input-wrap .unit {
     padding: 0 16px 0 8px;
     font-family: var(--font-mono);
@@ -1023,9 +1026,10 @@
       <div class="calc-inputs">
         <div class="pilot-session" id="pilotSession">
           <span class="pilot-label">Pilot</span>
-          <input id="pilotId" type="text" placeholder="Type your ID (e.g. VB-1234)"
-                 list="pilot-history" autocomplete="off" autocapitalize="characters"
-                 spellcheck="false" maxlength="24" />
+          <input id="pilotId" type="text" placeholder="e.g. Yossef De Franco"
+                 list="pilot-history" autocomplete="name" autocapitalize="words"
+                 spellcheck="false" minlength="2" maxlength="40"
+                 pattern="^[A-Za-z][A-Za-z '\-]*[A-Za-z]$" />
           <datalist id="pilot-history"></datalist>
           <span class="pilot-hint" id="pilotHint">remembered on this device</span>
         </div>
@@ -1033,39 +1037,52 @@
         <div class="input-grid">
           <div class="field full" id="f-flight">
             <label for="flight">Flight number
-              <span class="hint">— e.g. VB1234</span>
+              <span class="hint">— 2-3 letters + 1-4 digits, e.g. VB1234</span>
             </label>
             <div class="input-wrap">
-              <input id="flight" type="text" autocomplete="off" inputmode="text" placeholder="VB····" maxlength="10" />
+              <input id="flight" type="text" autocomplete="off" inputmode="text"
+                     placeholder="VB····" maxlength="7"
+                     pattern="^[A-Z]{2,3}[0-9]{1,4}$" />
             </div>
-            <div class="field-error">Please enter the flight number.</div>
+            <div class="field-error" data-default="Use 2-3 letters + 1-4 digits (e.g. VB1234).">Use 2-3 letters + 1-4 digits (e.g. VB1234).</div>
           </div>
 
           <div class="field" id="f-fr">
-            <label for="fr">FR — Fuel Remaining</label>
+            <label for="fr">FR — Fuel Remaining
+              <span class="hint">— integer, max 99,999</span>
+            </label>
             <div class="input-wrap">
-              <input id="fr" type="number" inputmode="decimal" min="0" step="any" placeholder="0" />
+              <input id="fr" type="text" inputmode="numeric"
+                     autocomplete="off" placeholder="0" maxlength="6"
+                     data-int-max="99999" />
               <span class="unit">KG</span>
             </div>
-            <div class="field-error">FR must be a valid number.</div>
+            <div class="field-error" data-default="FR must be an integer between 0 and 99,999.">FR must be an integer between 0 and 99,999.</div>
           </div>
 
           <div class="field" id="f-density">
-            <label for="density">Density <span class="hint">— from ground handler</span></label>
+            <label for="density">Density
+              <span class="hint">— from ground handler · 0.750–0.850</span>
+            </label>
             <div class="input-wrap">
-              <input id="density" type="number" inputmode="decimal" min="0" step="0.001" placeholder="0.793" />
+              <input id="density" type="text" inputmode="decimal"
+                     autocomplete="off" placeholder="0.793" maxlength="5" />
               <span class="unit">kg/L</span>
             </div>
-            <div class="field-error">Density must be greater than zero.</div>
+            <div class="field-error" data-default="Density must be between 0.750 and 0.850 kg/L (Jet A1).">Density must be between 0.750 and 0.850 kg/L (Jet A1).</div>
           </div>
 
           <div class="field" id="f-fob">
-            <label for="fob">FOB — Fuel On Board</label>
+            <label for="fob">FOB — Fuel On Board
+              <span class="hint">— integer, max 99,999 · ≥ FR</span>
+            </label>
             <div class="input-wrap">
-              <input id="fob" type="number" inputmode="decimal" min="0" step="any" placeholder="0" />
+              <input id="fob" type="text" inputmode="numeric"
+                     autocomplete="off" placeholder="0" maxlength="6"
+                     data-int-max="99999" />
               <span class="unit">KG</span>
             </div>
-            <div class="field-error">FOB must be greater than FR.</div>
+            <div class="field-error" data-default="FOB must be an integer between 0 and 99,999 and ≥ FR.">FOB must be an integer between 0 and 99,999 and ≥ FR.</div>
           </div>
         </div>
       </div>
@@ -1291,23 +1308,60 @@
     showToast._t = setTimeout(() => toastEl.classList.remove('show'), 2400);
   }
 
-  function setError(fieldId, hasError) {
+  function setError(fieldId, hasError, message) {
     const f = document.getElementById(fieldId);
     if (!f) return;
     f.classList.toggle('has-error', !!hasError);
     const wrap = f.querySelector('.input-wrap');
     if (wrap) wrap.classList.toggle('error', !!hasError);
+    const errEl = f.querySelector('.field-error');
+    if (errEl) {
+      const def = errEl.getAttribute('data-default') || errEl.textContent;
+      if (!errEl.getAttribute('data-default')) errEl.setAttribute('data-default', def);
+      errEl.textContent = (hasError && message) ? message : def;
+    }
   }
   function clearAllErrors() {
     ['f-flight','f-fr','f-fob','f-density'].forEach(id => setError(id, false));
   }
 
   // ====================== Pilot session ======================
-  // El Pilot ID + el historial de pilotos que han usado este device se guardan
-  // en localStorage. El input usa <datalist> para ofrecer un dropdown nativo
-  // con los IDs previos (útil cuando varios pilotos comparten una tablet).
+  // El nombre del piloto + el historial de pilotos que han usado este device
+  // se guardan en localStorage. El input usa <datalist> para ofrecer un
+  // dropdown nativo con los nombres previos (útil cuando varias personas
+  // comparten una tablet).
+  //
+  // Reglas (spec):
+  //  - 2-40 caracteres, solo letras (A-Z, a-z), espacios, '-' y '\''
+  //  - sin espacios al inicio/final ni dobles espacios
+  //  - auto Title Case en blur
+  const PILOT_NAME_RE = /^[A-Za-z][A-Za-z' \-]*[A-Za-z]$/;
+  function titleCase(s) {
+    return (s || '')
+      .toLowerCase()
+      .split(' ')
+      .map((w) => w ? w.charAt(0).toUpperCase() + w.slice(1) : '')
+      .join(' ');
+  }
+  function sanitizePilotName(s) {
+    // Quita caracteres no permitidos pero conserva el shape: dígitos y símbolos
+    // se eliminan, espacios duplicados colapsan, no se hace trim del trailing
+    // mientras el usuario está tipeando (eso pasa en blur).
+    return (s || '').replace(/[^A-Za-z' \-]/g, '').replace(/\s{2,}/g, ' ');
+  }
   function getPilotId() {
-    return ((pilotIdEl && pilotIdEl.value) || '').trim().toUpperCase();
+    return ((pilotIdEl && pilotIdEl.value) || '').trim().replace(/\s{2,}/g, ' ');
+  }
+  function validatePilotName(name) {
+    if (!name) return { ok: false, reason: 'Pilot name is required.' };
+    if (name.length < 2) return { ok: false, reason: 'Pilot name must be at least 2 characters.' };
+    if (name.length > 40) return { ok: false, reason: 'Pilot name must be at most 40 characters.' };
+    if (/^\s|\s$/.test(name)) return { ok: false, reason: 'No leading or trailing spaces.' };
+    if (/\s{2,}/.test(name)) return { ok: false, reason: 'No consecutive spaces.' };
+    if (!PILOT_NAME_RE.test(name)) {
+      return { ok: false, reason: "Only letters, spaces, hyphen (-) and apostrophe (')." };
+    }
+    return { ok: true };
   }
   function readPilotHistory() {
     try {
@@ -1323,11 +1377,13 @@
   }
   function refreshPilotDatalist() {
     if (!pilotHistoryEl) return;
-    const list = readPilotHistory();
+    // Solo mostrar nombres válidos según el spec actual (filtra IDs legacy
+    // como "IG" o "VB-1234" que ya no cumplen la regla de "nombre completo").
+    const list = readPilotHistory().filter((n) => validatePilotName(n).ok);
     pilotHistoryEl.innerHTML = '';
-    list.forEach((id) => {
+    list.forEach((name) => {
       const opt = document.createElement('option');
-      opt.value = id;
+      opt.value = name;
       pilotHistoryEl.appendChild(opt);
     });
   }
@@ -1341,6 +1397,11 @@
         : 'remembered on this device';
       return;
     }
+    const validation = validatePilotName(v);
+    if (!validation.ok) {
+      pilotHintEl.textContent = validation.reason;
+      return;
+    }
     pilotHintEl.textContent = history.includes(v)
       ? 'remembered on this device'
       : 'new pilot · will be remembered';
@@ -1348,7 +1409,13 @@
   function loadPilotId() {
     try {
       const last = localStorage.getItem(PILOT_KEY) || '';
-      if (pilotIdEl) pilotIdEl.value = (last || '').toUpperCase();
+      // Si el último valor no cumple la nueva regla (e.g. ID legacy "IG" o
+      // "VB-1234"), no lo prellenamos para forzar al piloto a escribir un
+      // nombre completo válido. El historial completo igual queda guardado
+      // y se filtra en refreshPilotDatalist.
+      if (pilotIdEl) {
+        pilotIdEl.value = validatePilotName(last).ok ? last : '';
+      }
     } catch (e) { /* ignore */ }
     refreshPilotDatalist();
     updatePilotHint();
@@ -1362,8 +1429,8 @@
     updatePilotHint();
   }
   function rememberPilotId() {
-    // Llamar después de un save exitoso para que el ID quede en el historial
-    // (evita poblar el datalist con IDs a medio escribir).
+    // Llamar después de un save exitoso para que el nombre quede en el
+    // historial (evita poblar el datalist con valores a medio escribir).
     const v = getPilotId();
     if (!v) return;
     try { localStorage.setItem(PILOT_KEY, v); } catch (e) { /* ignore */ }
@@ -1373,22 +1440,47 @@
     refreshPilotDatalist();
     updatePilotHint();
   }
-  function setPilotError(hasError) {
+  function setPilotError(hasError, message) {
     if (pilotSessionEl) pilotSessionEl.classList.toggle('has-error', !!hasError);
+    if (pilotHintEl && hasError && message) pilotHintEl.textContent = message;
+    if (!hasError) updatePilotHint();
   }
 
   // ====================== Live calc ======================
+  // Reglas de formato para los inputs numéricos:
+  //  - FR / FOB: enteros 0..99,999. Mostramos con separador de miles (2,500).
+  //  - Density:  decimal 0.750..0.850, hasta 3 decimales, con cero inicial.
+  const INT_MIN = 0;
+  const INT_MAX = 99999;
+  const DENSITY_MIN = 0.750;
+  const DENSITY_MAX = 0.850;
+  const DENSITY_RE  = /^0\.[0-9]{1,3}$/;
+  const FLIGHT_RE   = /^[A-Z]{2,3}[0-9]{1,4}$/;
+
+  function parseIntSafe(raw) {
+    if (raw == null) return NaN;
+    const s = String(raw).replace(/[\s,]/g, '');
+    if (!/^[0-9]+$/.test(s)) return NaN;
+    return parseInt(s, 10);
+  }
+  function fmtIntInput(n) {
+    if (!Number.isFinite(n)) return '';
+    return n.toLocaleString('en-US');
+  }
   function readInputs() {
-    const flight  = (flightEl.value || '').trim().toUpperCase();
-    const fr      = parseFloat(frEl.value);
-    const fob     = parseFloat(fobEl.value);
-    const density = parseFloat(densityEl.value);
+    const flight  = (flightEl.value || '').trim().toUpperCase().replace(/\s+/g, '');
+    const fr      = parseIntSafe(frEl.value);
+    const fob     = parseIntSafe(fobEl.value);
+    const density = parseFloat((densityEl.value || '').trim());
     return { flight, fr, fob, density };
   }
 
   function compute({ fr, fob, density }) {
     const valid = Number.isFinite(fr) && Number.isFinite(fob) && Number.isFinite(density)
-      && density > 0 && fob > fr;
+      && density >= DENSITY_MIN && density <= DENSITY_MAX
+      && fr >= INT_MIN && fob >= INT_MIN
+      && fr <= INT_MAX && fob <= INT_MAX
+      && fob > fr;
     if (!valid) return null;
     const totalKg = fob - fr;
     const totalL  = (totalKg + KG_TOLERANCE) / density;
@@ -1423,23 +1515,98 @@
       : 'Density: —';
   }
 
-  ;['input','change'].forEach(evt => {
-    flightEl.addEventListener(evt, () => {
-      flightEl.value = flightEl.value.toUpperCase();
-      setError('f-flight', false);
-    });
-    [frEl, fobEl, densityEl].forEach(el => el.addEventListener(evt, () => {
-      clearAllErrors();
-      updateLive();
-    }));
-    if (pilotIdEl) {
-      pilotIdEl.addEventListener(evt, () => {
-        pilotIdEl.value = pilotIdEl.value.toUpperCase();
-        setPilotError(false);
-        savePilotId();
-      });
-    }
+  // -------- Flight: solo A-Z y dígitos, mayúsculas, máx 7 chars --------
+  flightEl.addEventListener('input', () => {
+    const cleaned = flightEl.value.toUpperCase().replace(/[^A-Z0-9]/g, '').slice(0, 7);
+    if (flightEl.value !== cleaned) flightEl.value = cleaned;
+    setError('f-flight', false);
   });
+
+  // -------- FR / FOB: solo dígitos, formateo con coma de miles en blur ----
+  function attachIntegerInput(el, fieldId) {
+    el.addEventListener('input', () => {
+      const digits = el.value.replace(/[^0-9]/g, '').slice(0, 5); // max 5 dígitos = 99999
+      const n = digits === '' ? NaN : parseInt(digits, 10);
+      // Mientras tipea, mostramos sin formato para no romper la posición del caret.
+      // El reformateo con coma se aplica en blur.
+      el.value = digits;
+      clearAllErrors();
+      // Validación cruzada FR<=FOB en vivo (sin marcar error si están vacíos)
+      crossValidateFrFob();
+      updateLive();
+      // Aviso suave si excede el rango aunque el clamp ya cortó:
+      if (Number.isFinite(n) && n > INT_MAX) {
+        setError(fieldId, true, 'Maximum is 99,999.');
+      }
+    });
+    el.addEventListener('blur', () => {
+      const n = parseIntSafe(el.value);
+      el.value = Number.isFinite(n) ? fmtIntInput(n) : '';
+      crossValidateFrFob();
+    });
+    el.addEventListener('focus', () => {
+      // Quitar comas para que se pueda editar limpio
+      el.value = (el.value || '').replace(/,/g, '');
+    });
+  }
+  attachIntegerInput(frEl,  'f-fr');
+  attachIntegerInput(fobEl, 'f-fob');
+
+  function crossValidateFrFob() {
+    const fr  = parseIntSafe(frEl.value);
+    const fob = parseIntSafe(fobEl.value);
+    if (Number.isFinite(fr) && Number.isFinite(fob) && fob < fr) {
+      setError('f-fob', true, 'FOB must be ≥ FR (' + fmtIntInput(fr) + ' KG).');
+      return false;
+    }
+    return true;
+  }
+
+  // -------- Density: 0.750 .. 0.850 con leading zero --------
+  densityEl.addEventListener('input', () => {
+    // Permitir solo dígitos y un único punto. Limpiar caracteres ilegales.
+    let v = densityEl.value.replace(/[^0-9.]/g, '');
+    // Solo un punto
+    const firstDot = v.indexOf('.');
+    if (firstDot !== -1) {
+      v = v.slice(0, firstDot + 1) + v.slice(firstDot + 1).replace(/\./g, '');
+    }
+    // Auto-leading zero: si empieza con "." -> "0."
+    if (v.startsWith('.')) v = '0' + v;
+    // Recortar a 3 decimales máx
+    const dot = v.indexOf('.');
+    if (dot !== -1) v = v.slice(0, dot + 4);
+    if (densityEl.value !== v) densityEl.value = v;
+    setError('f-density', false);
+    updateLive();
+  });
+  densityEl.addEventListener('blur', () => {
+    const v = (densityEl.value || '').trim();
+    if (!v) return;
+    // Forzar formato 0.xxx si el usuario escribió algo válido pero incompleto.
+    let fixed = v;
+    if (/^\.[0-9]+$/.test(fixed)) fixed = '0' + fixed;
+    if (/^0\.?$/.test(fixed)) fixed = '';
+    densityEl.value = fixed;
+  });
+
+  // -------- Pilot name: sanitizar en input, Title Case en blur --------
+  if (pilotIdEl) {
+    pilotIdEl.addEventListener('input', () => {
+      // Quitar caracteres no permitidos en vivo (digitos, símbolos), pero
+      // dejar espacios/apóstrofes/guiones para no estorbar al usuario.
+      const cleaned = sanitizePilotName(pilotIdEl.value).slice(0, 40);
+      if (pilotIdEl.value !== cleaned) pilotIdEl.value = cleaned;
+      setPilotError(false);
+      savePilotId();
+    });
+    pilotIdEl.addEventListener('blur', () => {
+      const v = (pilotIdEl.value || '').trim().replace(/\s{2,}/g, ' ');
+      const cased = titleCase(v);
+      if (pilotIdEl.value !== cased) pilotIdEl.value = cased;
+      savePilotId();
+    });
+  }
 
   // ====================== Validation ======================
   function validateForSave() {
@@ -1447,12 +1614,58 @@
     let ok = true;
     clearAllErrors();
     setPilotError(false);
-    if (!getPilotId()) { setPilotError(true); ok = false; }
-    if (!flight) { setError('f-flight', true); ok = false; }
-    if (!Number.isFinite(fr) || fr < 0) { setError('f-fr', true); ok = false; }
-    if (!Number.isFinite(fob) || fob <= 0) { setError('f-fob', true); ok = false; }
-    if (Number.isFinite(fr) && Number.isFinite(fob) && fob <= fr) { setError('f-fob', true); ok = false; }
-    if (!Number.isFinite(density) || density <= 0) { setError('f-density', true); ok = false; }
+
+    // 1) Pilot name (2-40, letras/espacio/-/'; sin extremos ni dobles espacios)
+    const pilot = getPilotId();
+    const pv = validatePilotName(pilot);
+    if (!pv.ok) { setPilotError(true, pv.reason); ok = false; }
+
+    // 2) Flight (regex 2-3 letras + 1-4 dígitos)
+    if (!flight) {
+      setError('f-flight', true, 'Flight number is required.');
+      ok = false;
+    } else if (!FLIGHT_RE.test(flight)) {
+      setError('f-flight', true, 'Use 2-3 letters + 1-4 digits (e.g. VB1234).');
+      ok = false;
+    }
+
+    // 3) FR (entero 0..99,999)
+    if (!Number.isFinite(fr)) {
+      setError('f-fr', true, 'FR is required (integer KG).');
+      ok = false;
+    } else if (fr < INT_MIN || fr > INT_MAX) {
+      setError('f-fr', true, 'FR must be between 0 and 99,999.');
+      ok = false;
+    }
+
+    // 4) FOB (entero 0..99,999, > FR para que haya carga)
+    if (!Number.isFinite(fob)) {
+      setError('f-fob', true, 'FOB is required (integer KG).');
+      ok = false;
+    } else if (fob < INT_MIN || fob > INT_MAX) {
+      setError('f-fob', true, 'FOB must be between 0 and 99,999.');
+      ok = false;
+    } else if (Number.isFinite(fr) && fob < fr) {
+      setError('f-fob', true, 'FOB must be ≥ FR (' + fmtIntInput(fr) + ' KG).');
+      ok = false;
+    } else if (Number.isFinite(fr) && fob === fr) {
+      setError('f-fob', true, 'FOB must be greater than FR (no fuel to load).');
+      ok = false;
+    }
+
+    // 5) Density (decimal 0.750..0.850, con cero inicial)
+    const densityRaw = (densityEl.value || '').trim();
+    if (!densityRaw) {
+      setError('f-density', true, 'Density is required.');
+      ok = false;
+    } else if (!DENSITY_RE.test(densityRaw)) {
+      setError('f-density', true, 'Use format 0.xxx (e.g. 0.812).');
+      ok = false;
+    } else if (!Number.isFinite(density) || density < DENSITY_MIN || density > DENSITY_MAX) {
+      setError('f-density', true, 'Density must be between 0.750 and 0.850 kg/L.');
+      ok = false;
+    }
+
     return ok;
   }
 
@@ -1461,8 +1674,15 @@
     clearAllErrors();
     setPilotError(false);
     let ok = true;
-    if (!getPilotId()) { setPilotError(true); ok = false; }
-    if (!flight) { setError('f-flight', true); ok = false; }
+    const pv = validatePilotName(getPilotId());
+    if (!pv.ok) { setPilotError(true, pv.reason); ok = false; }
+    if (!flight) {
+      setError('f-flight', true, 'Flight number is required.');
+      ok = false;
+    } else if (!FLIGHT_RE.test(flight)) {
+      setError('f-flight', true, 'Use 2-3 letters + 1-4 digits (e.g. VB1234).');
+      ok = false;
+    }
     return ok;
   }
 
@@ -1763,9 +1983,9 @@
   // ====================== Actions ======================
   async function handleSave() {
     if (!validateForSave()) {
-      const reason = !getPilotId() ? 'Enter your Pilot ID first' : 'Please review the form';
+      const reason = !validatePilotName(getPilotId()).ok ? 'Enter your full name' : 'Please review the form';
       showToast(reason, 'warn');
-      if (!getPilotId() && pilotIdEl) pilotIdEl.focus();
+      if (!validatePilotName(getPilotId()).ok && pilotIdEl) pilotIdEl.focus();
       return;
     }
     const { flight, fr, fob, density } = readInputs();
@@ -1794,9 +2014,9 @@
 
   async function handleNoInfo() {
     if (!validateForNoInfo()) {
-      const reason = !getPilotId() ? 'Enter your Pilot ID first' : 'Enter the flight number';
+      const reason = !validatePilotName(getPilotId()).ok ? 'Enter your full name' : 'Enter a valid flight number';
       showToast(reason, 'warn');
-      if (!getPilotId() && pilotIdEl) pilotIdEl.focus();
+      if (!validatePilotName(getPilotId()).ok && pilotIdEl) pilotIdEl.focus();
       return;
     }
     const { flight, fr, fob, density } = readInputs();
