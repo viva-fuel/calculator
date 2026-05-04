@@ -425,8 +425,8 @@
     position: absolute;
     inset: 0;
     background:
-      radial-gradient(60% 100% at 0% 100%, rgba(0, 177, 64, 0.35) 0%, transparent 60%),
-      radial-gradient(60% 100% at 100% 0%, rgba(236, 0, 140, 0.30) 0%, transparent 60%);
+      radial-gradient(60% 100% at 0% 100%, rgba(115, 201, 0, 0.32) 0%, transparent 60%),
+      radial-gradient(60% 100% at 100% 0%, rgba(0, 174, 68, 0.32) 0%, transparent 60%);
     pointer-events: none;
   }
   .range-card > * { position: relative; }
@@ -487,8 +487,8 @@
     font-feature-settings: "tnum" 1, "ss01" 1;
     word-break: break-all;
   }
+  .range-num.low .v  { color: var(--viva-green-light); }
   .range-num.high .v { color: var(--viva-green); }
-  .range-num.low .v { color: var(--viva-magenta); }
   .range-num .u {
     font-family: var(--font-mono);
     font-size: 11px;
@@ -686,6 +686,25 @@
     background: var(--viva-magenta-soft);
   }
   .cloud-status[data-status="error"] .dot { background: var(--viva-magenta); }
+  .cloud-status[data-status="offline"] {
+    color: var(--ink-2);
+    border-color: var(--line-strong);
+    background: var(--surface-alt);
+  }
+  .cloud-status[data-status="offline"] .dot {
+    background: var(--ink-2);
+    animation: cloudPulse 2.4s ease-in-out infinite;
+  }
+  .cloud-status .pending {
+    background: var(--ink);
+    color: white;
+    padding: 2px 6px;
+    border-radius: 999px;
+    font-size: 9px;
+    font-weight: 700;
+    letter-spacing: 0.06em;
+    margin-left: 2px;
+  }
   @keyframes cloudPulse {
     0%, 100% { opacity: 1; transform: scale(1); }
     50% { opacity: 0.45; transform: scale(0.85); }
@@ -1031,6 +1050,7 @@
           <span class="cloud-status" id="cloudStatus" data-status="local" title="Cloud sync status">
             <span class="dot" aria-hidden="true"></span>
             <span class="lbl">Local mode</span>
+            <span class="pending" id="pendingBadge" hidden>0</span>
           </span>
         </div>
         <h2 id="rec-title" class="section-title" style="font-size: clamp(22px, 2.6vw, 30px);">Load history</h2>
@@ -1136,6 +1156,7 @@
   const emptyState  = $('emptyState');
   const tableEl     = $('recordsTable');
   const cloudStatusEl = $('cloudStatus');
+  const pendingBadgeEl = $('pendingBadge');
   const recordsSubEl  = $('recordsSub');
 
   const toastEl = $('toast');
@@ -1370,15 +1391,34 @@
     return true;
   }
 
+  function countPending() {
+    return records.reduce((n, r) => n + (r.synced === false ? 1 : 0), 0);
+  }
+
+  function refreshPendingBadge() {
+    if (!pendingBadgeEl) return;
+    const n = countPending();
+    if (n > 0) {
+      pendingBadgeEl.hidden = false;
+      pendingBadgeEl.textContent = String(n);
+      pendingBadgeEl.title = n + ' record' + (n === 1 ? '' : 's') + ' waiting to sync';
+    } else {
+      pendingBadgeEl.hidden = true;
+    }
+  }
+
   function setCloudStatus(status) {
     if (!cloudStatusEl) return;
     cloudStatusEl.setAttribute('data-status', status);
     const lblEl = cloudStatusEl.querySelector('.lbl');
-    if (!lblEl) return;
-    if (status === 'syncing')      lblEl.textContent = 'Syncing…';
-    else if (status === 'synced')  lblEl.textContent = 'Synced · SharePoint';
-    else if (status === 'error')   lblEl.textContent = 'Offline';
-    else                            lblEl.textContent = 'Local mode';
+    if (lblEl) {
+      if (status === 'syncing')      lblEl.textContent = 'Syncing…';
+      else if (status === 'synced')  lblEl.textContent = 'Synced · SharePoint';
+      else if (status === 'offline') lblEl.textContent = 'Offline · queued';
+      else if (status === 'error')   lblEl.textContent = 'Sync error';
+      else                            lblEl.textContent = 'Local mode';
+    }
+    refreshPendingBadge();
   }
 
   function mergeRecords(localArr, cloudArr) {
@@ -1399,10 +1439,18 @@
         await cloudPushRecord(r);
         r.synced = true;
         pushed++;
-      } catch (e) { /* deja como pending para el próximo intento */ }
+      } catch (e) {
+        // Deja como pending para el próximo intento (offline / error de red).
+        // No seguimos intentando los siguientes para no spamear si la red está caída.
+        break;
+      }
     }
     if (pushed > 0) saveLocal(records);
     return pushed;
+  }
+
+  function isOnline() {
+    return typeof navigator === 'undefined' || navigator.onLine !== false;
   }
 
   async function initialSync() {
@@ -1414,6 +1462,11 @@
       return;
     }
 
+    if (!isOnline()) {
+      setCloudStatus('offline');
+      return;
+    }
+
     setCloudStatus('syncing');
     try {
       const cloudArr = await cloudFetchRecords();
@@ -1421,27 +1474,35 @@
       saveLocal(records);
       renderRecords();
       const pushed = await pushPending();
-      setCloudStatus('synced');
+      const stillPending = countPending();
+      setCloudStatus(stillPending > 0 ? 'offline' : 'synced');
       if (pushed > 0) showToast(pushed + ' pending record' + (pushed === 1 ? '' : 's') + ' synced');
     } catch (e) {
-      setCloudStatus('error');
+      setCloudStatus(isOnline() ? 'error' : 'offline');
     }
   }
 
   async function refreshFromCloud(silent) {
     if (!cloudConfigured) return;
+    if (!isOnline()) {
+      setCloudStatus('offline');
+      if (!silent) showToast('No connection — pending records stay queued', 'warn');
+      return;
+    }
     setCloudStatus('syncing');
     try {
       const cloudArr = await cloudFetchRecords();
       records = mergeRecords(records, cloudArr);
       saveLocal(records);
       renderRecords();
-      await pushPending();
-      setCloudStatus('synced');
+      const pushed = await pushPending();
+      const stillPending = countPending();
+      setCloudStatus(stillPending > 0 ? 'offline' : 'synced');
+      if (pushed > 0) showToast(pushed + ' pending record' + (pushed === 1 ? '' : 's') + ' synced');
       if (!silent) showToast('History refreshed · ' + records.length + ' record' + (records.length === 1 ? '' : 's'));
     } catch (e) {
-      setCloudStatus('error');
-      if (!silent) showToast('Could not reach the cloud', 'warn');
+      setCloudStatus(isOnline() ? 'error' : 'offline');
+      if (!silent) showToast('Could not reach SharePoint', 'warn');
     }
   }
 
@@ -1449,8 +1510,14 @@
     records.unshift(Object.assign({ synced: false }, record));
     saveLocal(records);
     renderRecords();
+    refreshPendingBadge();
 
     if (!cloudConfigured) return;
+
+    if (!isOnline()) {
+      setCloudStatus('offline');
+      return;
+    }
 
     setCloudStatus('syncing');
     try {
@@ -1459,10 +1526,21 @@
       if (r) r.synced = true;
       saveLocal(records);
       renderRecords();
-      setCloudStatus('synced');
+      const stillPending = countPending();
+      setCloudStatus(stillPending > 0 ? 'offline' : 'synced');
     } catch (e) {
-      setCloudStatus('error');
+      setCloudStatus(isOnline() ? 'error' : 'offline');
     }
+  }
+
+  // ====================== Auto-resync al recuperar conexión ======================
+  let resyncDebounce = null;
+  function scheduleResync(reason) {
+    if (!cloudConfigured) return;
+    clearTimeout(resyncDebounce);
+    resyncDebounce = setTimeout(() => {
+      refreshFromCloud(true);
+    }, reason === 'online' ? 800 : 200);
   }
 
   function clearLocal() {
@@ -1661,23 +1739,44 @@
   // Cuando la pestaña vuelve a estar visible, refrescar (en modo cloud)
   document.addEventListener('visibilitychange', () => {
     if (document.visibilityState === 'visible' && cloudConfigured) {
-      refreshFromCloud(true);
+      scheduleResync('visibility');
     }
+  });
+
+  // Cuando vuelve la conexión, intentar mandar lo pendiente automáticamente.
+  window.addEventListener('online', () => {
+    showToast('Back online — syncing pending records');
+    scheduleResync('online');
+  });
+
+  // Cuando se pierde la conexión, marcar visualmente sin esperar a un fallo.
+  window.addEventListener('offline', () => {
+    if (cloudConfigured) setCloudStatus('offline');
   });
 
   cloudConfigured = isCloudConfigured();
   if (cloudConfigured) {
     if (btnRefresh) btnRefresh.hidden = false;
     if (recordsSubEl) {
-      recordsSubEl.textContent = 'Shared history across all pilots via Google Sheets. Auto-refreshes every 30 s.';
+      recordsSubEl.textContent = 'Shared history across all pilots via SharePoint. Auto-syncs every 30 s and on reconnect.';
     }
-    setInterval(() => refreshFromCloud(true), AUTO_REFRESH_MS);
+    setInterval(() => {
+      if (isOnline()) refreshFromCloud(true);
+    }, AUTO_REFRESH_MS);
   }
 
   tickClock();
   setInterval(tickClock, 1000);
   updateLive();
   initialSync();
+
+  // ====================== Service Worker (offline cache) ======================
+  // Cachea la página y assets para que cargue sin conexión a partir de la 2.ª visita.
+  if ('serviceWorker' in navigator) {
+    window.addEventListener('load', () => {
+      navigator.serviceWorker.register('sw.js').catch(() => { /* silent */ });
+    });
+  }
 })();
 </script>
 
