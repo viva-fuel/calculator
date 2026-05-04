@@ -76,8 +76,8 @@ Yo los pego en `dist/index.html` (línea ~1218 aprox., constantes `JSONBIN_BIN_I
 
 ## Paso 5 — Probar (1 min)
 
-1. Abrí en una pestaña: `https://ignaciogaing.github.io/viva-fuel-calculator/` (la app del piloto).
-2. Abrí en otra pestaña: `https://ignaciogaing.github.io/viva-fuel-calculator/admin.html`
+1. Abrí en una pestaña: `https://viva-fuel.github.io/calculator/` (la app del piloto).
+2. Abrí en otra pestaña: `https://viva-fuel.github.io/calculator/admin.html`
 3. En `admin.html`, primera vez te pide Bin ID + Master Key. Pegá los mismos del paso 4. Clic **Connect**.
 4. En la pestaña del piloto, llená un registro de prueba con un Pilot ID y dale **Log load**.
 5. Mirá la pill arriba de la tabla:
