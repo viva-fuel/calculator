@@ -635,7 +635,13 @@
     white-space: nowrap;
   }
   .btn:active { transform: translateY(1px); }
-  .btn:disabled { opacity: 0.45; cursor: not-allowed; }
+  .btn:disabled, .btn[aria-disabled="true"] {
+    opacity: 0.45;
+    cursor: not-allowed;
+    box-shadow: none;
+    pointer-events: none;
+    filter: grayscale(0.2);
+  }
 
   .btn.primary {
     --btn-bg: var(--viva-green);
@@ -1520,6 +1526,10 @@
     const cleaned = flightEl.value.toUpperCase().replace(/[^A-Z0-9]/g, '').slice(0, 7);
     if (flightEl.value !== cleaned) flightEl.value = cleaned;
     setError('f-flight', false);
+    syncSubmitState();
+  });
+  flightEl.addEventListener('blur', () => {
+    markIfInvalid('f-flight', (v) => FLIGHT_RE.test(v) ? null : 'Use 2-3 letters + 1-4 digits (e.g. VB1234).');
   });
 
   // -------- FR / FOB: solo dígitos, formateo con coma de miles en blur ----
@@ -1530,11 +1540,10 @@
       // Mientras tipea, mostramos sin formato para no romper la posición del caret.
       // El reformateo con coma se aplica en blur.
       el.value = digits;
-      clearAllErrors();
-      // Validación cruzada FR<=FOB en vivo (sin marcar error si están vacíos)
+      setError(fieldId, false);
       crossValidateFrFob();
       updateLive();
-      // Aviso suave si excede el rango aunque el clamp ya cortó:
+      syncSubmitState();
       if (Number.isFinite(n) && n > INT_MAX) {
         setError(fieldId, true, 'Maximum is 99,999.');
       }
@@ -1543,6 +1552,13 @@
       const n = parseIntSafe(el.value);
       el.value = Number.isFinite(n) ? fmtIntInput(n) : '';
       crossValidateFrFob();
+      markIfInvalid(fieldId, (v) => {
+        const num = parseIntSafe(v);
+        if (!Number.isFinite(num)) return 'Must be a whole number.';
+        if (num < INT_MIN || num > INT_MAX) return 'Must be between 0 and 99,999.';
+        return null;
+      });
+      syncSubmitState();
     });
     el.addEventListener('focus', () => {
       // Quitar comas para que se pueda editar limpio
@@ -1566,28 +1582,42 @@
   densityEl.addEventListener('input', () => {
     // Permitir solo dígitos y un único punto. Limpiar caracteres ilegales.
     let v = densityEl.value.replace(/[^0-9.]/g, '');
-    // Solo un punto
     const firstDot = v.indexOf('.');
     if (firstDot !== -1) {
       v = v.slice(0, firstDot + 1) + v.slice(firstDot + 1).replace(/\./g, '');
     }
     // Auto-leading zero: si empieza con "." -> "0."
     if (v.startsWith('.')) v = '0' + v;
+    // Si el usuario empezó con dígitos sin punto (e.g. "0793" o "812"), forzar
+    // el punto después del primer "0" para mantener la forma 0.xxx.
+    if (/^[0-9]{2,}$/.test(v)) {
+      // Inserta el punto después del primer carácter
+      v = v.charAt(0) + '.' + v.slice(1);
+    }
     // Recortar a 3 decimales máx
     const dot = v.indexOf('.');
     if (dot !== -1) v = v.slice(0, dot + 4);
     if (densityEl.value !== v) densityEl.value = v;
     setError('f-density', false);
     updateLive();
+    syncSubmitState();
   });
   densityEl.addEventListener('blur', () => {
     const v = (densityEl.value || '').trim();
-    if (!v) return;
-    // Forzar formato 0.xxx si el usuario escribió algo válido pero incompleto.
+    if (!v) { syncSubmitState(); return; }
     let fixed = v;
     if (/^\.[0-9]+$/.test(fixed)) fixed = '0' + fixed;
     if (/^0\.?$/.test(fixed)) fixed = '';
     densityEl.value = fixed;
+    markIfInvalid('f-density', (val) => {
+      if (!DENSITY_RE.test(val)) return 'Use format 0.xxx (e.g. 0.812).';
+      const n = parseFloat(val);
+      if (!Number.isFinite(n) || n < DENSITY_MIN || n > DENSITY_MAX) {
+        return 'Must be between 0.750 and 0.850 kg/L.';
+      }
+      return null;
+    });
+    syncSubmitState();
   });
 
   // -------- Pilot name: sanitizar en input, Title Case en blur --------
@@ -1599,12 +1629,18 @@
       if (pilotIdEl.value !== cleaned) pilotIdEl.value = cleaned;
       setPilotError(false);
       savePilotId();
+      syncSubmitState();
     });
     pilotIdEl.addEventListener('blur', () => {
       const v = (pilotIdEl.value || '').trim().replace(/\s{2,}/g, ' ');
       const cased = titleCase(v);
       if (pilotIdEl.value !== cased) pilotIdEl.value = cased;
       savePilotId();
+      markIfInvalid('f-pilot', (val) => {
+        const r = validatePilotName(val);
+        return r.ok ? null : r.reason;
+      });
+      syncSubmitState();
     });
   }
 
@@ -1684,6 +1720,67 @@
       ok = false;
     }
     return ok;
+  }
+
+  // ====================== Submit gating ======================
+  // Chequeo "silencioso" de validez completa para deshabilitar el botón Log
+  // load mientras el formulario no esté 100% válido. NO marca errores en
+  // campos vacíos: solo deshabilita el botón. Los errores con detalle se
+  // marcan en blur de cada campo (más abajo) y al hacer click si quedó algo
+  // medio escrito.
+  function isFormFullyValid() {
+    if (!validatePilotName(getPilotId()).ok) return false;
+    const { flight, fr, fob, density } = readInputs();
+    if (!flight || !FLIGHT_RE.test(flight)) return false;
+    if (!Number.isFinite(fr) || fr < INT_MIN || fr > INT_MAX) return false;
+    if (!Number.isFinite(fob) || fob < INT_MIN || fob > INT_MAX) return false;
+    if (fob <= fr) return false;
+    const densityRaw = (densityEl.value || '').trim();
+    if (!densityRaw || !DENSITY_RE.test(densityRaw)) return false;
+    if (!Number.isFinite(density) || density < DENSITY_MIN || density > DENSITY_MAX) return false;
+    return true;
+  }
+  function isMinFormValidForNoInfo() {
+    if (!validatePilotName(getPilotId()).ok) return false;
+    const { flight } = readInputs();
+    return !!flight && FLIGHT_RE.test(flight);
+  }
+  function syncSubmitState() {
+    const fullOk = isFormFullyValid();
+    const minOk  = isMinFormValidForNoInfo();
+    if (btnSave) {
+      btnSave.disabled = !fullOk;
+      btnSave.setAttribute('aria-disabled', String(!fullOk));
+      btnSave.title = fullOk ? '' : 'Complete all fields with valid values to enable';
+    }
+    if (btnNoInfo) {
+      btnNoInfo.disabled = !minOk;
+      btnNoInfo.setAttribute('aria-disabled', String(!minOk));
+      btnNoInfo.title = minOk ? '' : 'Pilot name and flight number are required';
+    }
+  }
+  // Marca error en un campo solo si su valor actual es inválido (no si está
+  // vacío). Útil para validación en blur sin spamear errores.
+  function markIfInvalid(fieldId, isValidWhenNotEmpty) {
+    const el = fieldId === 'f-pilot' ? pilotIdEl
+             : fieldId === 'f-flight' ? flightEl
+             : fieldId === 'f-fr' ? frEl
+             : fieldId === 'f-fob' ? fobEl
+             : densityEl;
+    const v = (el.value || '').trim();
+    if (!v) {
+      if (fieldId === 'f-pilot') setPilotError(false);
+      else setError(fieldId, false);
+      return;
+    }
+    const reason = isValidWhenNotEmpty(v);
+    if (reason) {
+      if (fieldId === 'f-pilot') setPilotError(true, reason);
+      else setError(fieldId, true, reason);
+    } else {
+      if (fieldId === 'f-pilot') setPilotError(false);
+      else setError(fieldId, false);
+    }
   }
 
   // ====================== Estado ======================
@@ -2177,13 +2274,38 @@
   setInterval(tickClock, 1000);
   loadPilotId();
   updateLive();
+  syncSubmitState();
   initialSync();
 
-  // ====================== Service Worker (offline cache) ======================
-  // Cachea la página y assets para que cargue sin conexión a partir de la 2.ª visita.
+  // ====================== Service Worker (offline cache + auto-update) ======================
+  // Cachea la página y assets para que cargue sin conexión a partir de la
+  // 2.ª visita. Importante: cuando se publica una versión nueva, esta lógica
+  // detecta el SW nuevo, lo activa y recarga la página automáticamente. Así
+  // los pilotos no quedan atrapados en una versión vieja.
   if ('serviceWorker' in navigator) {
-    window.addEventListener('load', () => {
-      navigator.serviceWorker.register('sw.js').catch(() => { /* silent */ });
+    window.addEventListener('load', async () => {
+      try {
+        const reg = await navigator.serviceWorker.register('sw.js');
+        // Forzar chequeo de update inmediatamente al cargar.
+        try { reg.update(); } catch (e) { /* ignore */ }
+
+        function handleNewWorker(newSW) {
+          if (!newSW) return;
+          newSW.addEventListener('statechange', () => {
+            if (newSW.state === 'installed' && navigator.serviceWorker.controller) {
+              // Hay una versión nueva lista. Recargar para activarla.
+              showToast('Update available · reloading…');
+              setTimeout(() => window.location.reload(), 600);
+            }
+          });
+        }
+
+        if (reg.waiting) handleNewWorker(reg.waiting);
+        reg.addEventListener('updatefound', () => handleNewWorker(reg.installing));
+
+        // Re-chequear update cada 5 min mientras la página está abierta.
+        setInterval(() => { try { reg.update(); } catch (e) { /* ignore */ } }, 5 * 60 * 1000);
+      } catch (e) { /* silent */ }
     });
   }
 })();
