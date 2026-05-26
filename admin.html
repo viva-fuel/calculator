@@ -752,6 +752,11 @@
           <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="7 10 12 15 17 10"/><line x1="12" y1="15" x2="12" y2="3"/></svg>
           CSV
         </button>
+        <button class="btn ghost" id="btnImportCsv" type="button" title="Bulk import a CSV exported by a pilot (or any source). Idempotent: re-uploading does not duplicate.">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="17 8 12 3 7 8"/><line x1="12" y1="3" x2="12" y2="15"/></svg>
+          Import CSV
+        </button>
+        <input id="importCsvFile" type="file" accept=".csv,text/csv" hidden multiple />
         <button class="btn ghost" id="btnSnapshot" type="button" title="Copy current records as JSON, ready to paste into fallback-snapshot.json in the repo">
           <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><rect x="9" y="9" width="13" height="13" rx="2" ry="2"/><path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1"/></svg>
           Snapshot
@@ -884,6 +889,8 @@
   const btnDownloadEl = $('btnDownload');
   const btnDownloadXlsxEl = $('btnDownloadXlsx');
   const btnSnapshotEl = $('btnSnapshot');
+  const btnImportCsvEl = $('btnImportCsv');
+  const importCsvFileEl = $('importCsvFile');
   const btnDisconnectEl = $('btnDisconnect');
   const gateBypassEl = $('gateBypass');
 
@@ -1587,6 +1594,205 @@
     }
   }
 
+  // ===================== CSV bulk import =====================
+  // Lets the admin upload one or more CSVs exported from the pilot app (same
+  // schema: semicolon-separated, with the columns produced by buildCsv() in
+  // index.html). Each row becomes a single INSERT to Supabase with a
+  // deterministic id derived from (iso + pilot + flight), so re-uploading the
+  // same file is a no-op (Supabase ignores duplicates on the primary key).
+  //
+  // Use cases:
+  //   - JSONBin recovers later: dump the bin as CSV, import it here.
+  //   - Pilots send their per-device CSVs: drop them all in.
+  //   - Manual backfill from any other source that can produce the schema.
+
+  const CSV_EXPECTED_HEADERS = [
+    'Date/Time', 'ISO', 'Pilot ID', 'Flight', 'FR (KG)', 'FOB (KG)', 'Total (KG)',
+    'Density (kg/L)', 'Total (L)', 'Low (L)', 'High (L)', 'Status'
+  ];
+
+  // Minimal RFC-4180-ish parser: handles BOM, CRLF/LF, quoted fields with
+  // escaped quotes, configurable delimiter. Returns an array of string arrays.
+  function parseCsvText(text, delim) {
+    if (text.charCodeAt(0) === 0xFEFF) text = text.slice(1);
+    const rows = [];
+    let row = [], field = '', inQuotes = false, i = 0;
+    while (i < text.length) {
+      const ch = text[i];
+      if (inQuotes) {
+        if (ch === '"') {
+          if (text[i + 1] === '"') { field += '"'; i += 2; continue; }
+          inQuotes = false; i++; continue;
+        }
+        field += ch; i++; continue;
+      }
+      if (ch === '"') { inQuotes = true; i++; continue; }
+      if (ch === delim) { row.push(field); field = ''; i++; continue; }
+      if (ch === '\r') { i++; continue; }
+      if (ch === '\n') { row.push(field); rows.push(row); row = []; field = ''; i++; continue; }
+      field += ch; i++;
+    }
+    if (field.length > 0 || row.length > 0) { row.push(field); rows.push(row); }
+    return rows.filter(r => r.length > 1 || (r.length === 1 && r[0] !== ''));
+  }
+
+  // Auto-detect delimiter. The pilot app exports semicolons but external
+  // tools (Excel "Save as CSV" in some locales) may use commas.
+  function detectDelimiter(headerLine) {
+    const semis = (headerLine.match(/;/g) || []).length;
+    const commas = (headerLine.match(/,/g) || []).length;
+    return semis >= commas ? ';' : ',';
+  }
+
+  function parsePilotCsv(text) {
+    const firstLineEnd = text.search(/\r?\n/);
+    const headerLine = firstLineEnd >= 0 ? text.slice(0, firstLineEnd) : text;
+    const delim = detectDelimiter(headerLine);
+    const rows = parseCsvText(text, delim);
+    if (rows.length < 2) return { headers: [], records: [] };
+    const headers = rows[0].map(h => h.trim());
+    const records = rows.slice(1).map(r => {
+      const obj = {};
+      for (let i = 0; i < headers.length; i++) obj[headers[i]] = (r[i] != null ? String(r[i]).trim() : '');
+      return obj;
+    });
+    return { headers, records };
+  }
+
+  function num(v) {
+    if (v == null || v === '') return null;
+    const s = String(v).replace(',', '.');
+    const n = Number(s);
+    return Number.isFinite(n) ? n : null;
+  }
+
+  function csvRowToWire(row) {
+    const iso = row['ISO'] || '';
+    const pilotId = row['Pilot ID'] || '';
+    const flight  = row['Flight'] || '';
+    if (!iso || !pilotId || !flight) return null;
+    // Deterministic id: same (iso, pilot, flight) always produces the same id,
+    // so re-importing the same CSV is a no-op via PK conflict on Supabase.
+    const id = 'csv:' + iso + ':' + pilotId + ':' + flight;
+    const statusRaw = (row['Status'] || '').toLowerCase();
+    const status = statusRaw.indexOf('ok') === 0 ? 'OK' : 'NO_INFO';
+    return {
+      id:        id,
+      timestamp: iso,
+      pilot_id:  pilotId,
+      flight:    flight,
+      fr_kg:     num(row['FR (KG)']),
+      fob_kg:    num(row['FOB (KG)']),
+      total_kg:  num(row['Total (KG)']),
+      density:   num(row['Density (kg/L)']),
+      total_l:   num(row['Total (L)']),
+      low_l:     num(row['Low (L)']),
+      high_l:    num(row['High (L)']),
+      status:    status,
+      device:    'csv-import'
+    };
+  }
+
+  async function supabaseBulkInsert(rows) {
+    if (!isSupabaseConfigured()) throw new Error('Supabase not configured');
+    if (rows.length === 0) return { inserted: 0 };
+    // PostgREST accepts a JSON array body for bulk insert. With ignore-duplicates
+    // on the PK, rows already present are skipped silently.
+    const url = SUPABASE_URL + '/rest/v1/' + SUPABASE_TABLE;
+    const r = await fetch(url, {
+      method: 'POST',
+      headers: {
+        'apikey':        SUPABASE_ANON_KEY,
+        'Authorization': 'Bearer ' + SUPABASE_ANON_KEY,
+        'Content-Type':  'application/json',
+        'Prefer':        'resolution=ignore-duplicates,return=minimal'
+      },
+      body: JSON.stringify(rows),
+      cache: 'no-store'
+    });
+    if (!r.ok) {
+      const txt = await r.text().catch(() => '');
+      throw new Error('Supabase bulk insert HTTP ' + r.status + (txt ? ' · ' + txt.slice(0, 200) : ''));
+    }
+    return { inserted: rows.length };
+  }
+
+  function readFileAsText(file) {
+    return new Promise((resolve, reject) => {
+      const reader = new FileReader();
+      reader.onload  = () => resolve(reader.result);
+      reader.onerror = () => reject(reader.error || new Error('Read failed'));
+      reader.readAsText(file, 'utf-8');
+    });
+  }
+
+  async function importOneCsvFile(file) {
+    const text = await readFileAsText(file);
+    const parsed = parsePilotCsv(text);
+    if (parsed.records.length === 0) {
+      return { file: file.name, parsed: 0, sent: 0, skipped: 0, error: 'Empty or invalid CSV' };
+    }
+    // Build wire rows, drop invalid ones (missing iso / pilot / flight).
+    const wireAll = parsed.records.map(csvRowToWire);
+    const wireGood = wireAll.filter(x => x !== null);
+    const skipped = wireAll.length - wireGood.length;
+    // Bulk insert in batches to stay polite with PostgREST limits.
+    const BATCH = 100;
+    let sent = 0;
+    for (let i = 0; i < wireGood.length; i += BATCH) {
+      const batch = wireGood.slice(i, i + BATCH);
+      await supabaseBulkInsert(batch);
+      sent += batch.length;
+      setCloudStatus('syncing', 'Importing… ' + sent + '/' + wireGood.length);
+    }
+    return { file: file.name, parsed: parsed.records.length, sent: sent, skipped: skipped };
+  }
+
+  async function handleImportCsv(fileList) {
+    const files = Array.from(fileList || []);
+    if (files.length === 0) return;
+    if (!isSupabaseConfigured()) {
+      showToast('Supabase must be configured for CSV import', 'warn');
+      return;
+    }
+    btnImportCsvEl.disabled = true;
+    const original = btnImportCsvEl.innerHTML;
+    btnImportCsvEl.innerHTML = original.replace('Import CSV', 'Importing…');
+    const results = [];
+    try {
+      for (const f of files) {
+        try {
+          const res = await importOneCsvFile(f);
+          results.push(res);
+        } catch (e) {
+          results.push({ file: f.name, parsed: 0, sent: 0, skipped: 0, error: e.message || String(e) });
+        }
+      }
+      const ok = results.filter(r => !r.error);
+      const totalSent = ok.reduce((s, r) => s + r.sent, 0);
+      const totalSkipped = ok.reduce((s, r) => s + r.skipped, 0);
+      const failed = results.filter(r => r.error);
+      let msg;
+      if (failed.length === 0) {
+        msg = 'Imported ' + totalSent + ' row' + (totalSent === 1 ? '' : 's')
+            + ' from ' + ok.length + ' file' + (ok.length === 1 ? '' : 's')
+            + (totalSkipped > 0 ? ' · ' + totalSkipped + ' row' + (totalSkipped === 1 ? '' : 's') + ' skipped (missing fields)' : '');
+        showToast(msg);
+      } else {
+        msg = 'Imported ' + totalSent + ' rows · ' + failed.length + ' file' + (failed.length === 1 ? '' : 's') + ' failed';
+        showToast(msg, 'warn');
+        try { console.warn('Import errors:', failed); } catch (_) {}
+      }
+      // Refresh the table from Supabase so the new rows show up immediately.
+      await refreshFromCloud(true);
+    } finally {
+      btnImportCsvEl.disabled = false;
+      btnImportCsvEl.innerHTML = original;
+      // Reset the file input so the same file can be re-selected if needed.
+      if (importCsvFileEl) importCsvFileEl.value = '';
+    }
+  }
+
   // ===================== Snapshot export (frente D) =====================
   // Builds the exact JSON shape expected by fetchRepoSnapshot() and copies
   // it to the clipboard. The user then pastes it into the chat (or directly
@@ -1720,6 +1926,10 @@
   btnDownloadEl.addEventListener('click', handleDownload);
   btnDownloadXlsxEl.addEventListener('click', handleDownloadXlsx);
   if (btnSnapshotEl) btnSnapshotEl.addEventListener('click', handleExportSnapshot);
+  if (btnImportCsvEl && importCsvFileEl) {
+    btnImportCsvEl.addEventListener('click', () => importCsvFileEl.click());
+    importCsvFileEl.addEventListener('change', (e) => handleImportCsv(e.target.files));
+  }
   btnDisconnectEl.addEventListener('click', () => {
     // In read-only mode this button is repurposed as "Sign in to live".
     // With Supabase configured we go straight back to the live admin (no
