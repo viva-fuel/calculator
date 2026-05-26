@@ -1,0 +1,13 @@
+# Local-only files (never commit)
+.bin-payload.tmp.json
+.jsonbin-recovered.json
+.jsonbin-snapshot.tmp.json
+.scripts/
+
+# OS / editor cruft
+.DS_Store
+Thumbs.db
+*.swp
+*.swo
+.vscode/
+.idea/

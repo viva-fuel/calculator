@@ -849,8 +849,20 @@
   const AUTO_REFRESH_MS = 30000;
   const JSONBIN_BASE = 'https://api.jsonbin.io/v3/b/';
   // Static fallback hosted on the same GitHub Pages site. Updated manually
-  // by committing to the repo when JSONBin is unreachable for too long.
+  // by committing to the repo when both Supabase and JSONBin are unreachable.
   const SNAPSHOT_URL = './fallback-snapshot.json';
+
+  // ====================== Supabase (backend primario) ======================
+  // Lee desde la tabla fuel_records. Si esto falla, el admin cae a JSONBin
+  // (creds del gate), después al cache local, y por último al repo snapshot.
+  const SUPABASE_URL      = 'https://bpbrvepsrscakhfserfb.supabase.co';
+  const SUPABASE_ANON_KEY = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImJwYnJ2ZXBzcnNjYWtoZnNlcmZiIiwicm9sZSI6ImFub24iLCJpYXQiOjE3Nzk3NDQzODgsImV4cCI6MjA5NTMyMDM4OH0.Wo9WcwPDjWVKvXSoCf97DKHpM7-_1mGFEwcWpatEUQI';
+  const SUPABASE_TABLE    = 'fuel_records';
+
+  function isSupabaseConfigured() {
+    return typeof SUPABASE_URL === 'string' && /^https:\/\//.test(SUPABASE_URL)
+        && typeof SUPABASE_ANON_KEY === 'string' && SUPABASE_ANON_KEY.length >= 40;
+  }
 
   // ===================== DOM =====================
   const $ = (id) => document.getElementById(id);
@@ -1051,8 +1063,52 @@
     return err;
   }
 
-  async function fetchAll() {
-    if (!creds) throw makeFetchError(0, 'No credentials');
+  // Postgres column names are snake_case; the admin renderer expects camelCase.
+  function fromSupabaseWire(row) {
+    return {
+      id:        row.id,
+      timestamp: row.timestamp,
+      pilotId:   row.pilot_id,
+      flight:    row.flight,
+      frKg:      row.fr_kg,
+      fobKg:     row.fob_kg,
+      totalKg:   row.total_kg,
+      density:   row.density != null ? Number(row.density) : null,
+      totalL:    row.total_l != null ? Number(row.total_l) : null,
+      lowL:      row.low_l   != null ? Number(row.low_l)   : null,
+      highL:     row.high_l  != null ? Number(row.high_l)  : null,
+      status:    row.status,
+      device:    row.device
+    };
+  }
+
+  async function supabaseFetchAll() {
+    if (!isSupabaseConfigured()) throw makeFetchError(0, 'Supabase not configured');
+    // Pull recent first so even partial responses are useful; PostgREST caps
+    // at 1000 rows by default which is plenty for this volume.
+    const url = SUPABASE_URL + '/rest/v1/' + SUPABASE_TABLE
+      + '?select=*&order=timestamp.desc&limit=1000';
+    let r;
+    try {
+      r = await fetch(url, {
+        method: 'GET',
+        headers: {
+          'apikey':        SUPABASE_ANON_KEY,
+          'Authorization': 'Bearer ' + SUPABASE_ANON_KEY
+        },
+        cache: 'no-store'
+      });
+    } catch (netErr) {
+      throw makeFetchError(0, 'Supabase unreachable');
+    }
+    if (!r.ok) throw makeFetchError(r.status, 'Supabase returned HTTP ' + r.status);
+    const body = await r.json();
+    if (!Array.isArray(body)) return [];
+    return body.map(fromSupabaseWire);
+  }
+
+  async function jsonbinFetchAll() {
+    if (!creds) throw makeFetchError(0, 'No JSONBin credentials');
     let r;
     try {
       r = await fetch(JSONBIN_BASE + creds.binId + '/latest', {
@@ -1061,14 +1117,29 @@
         cache: 'no-store'
       });
     } catch (netErr) {
-      // Network-level failure (DNS, CORS preflight, total timeout, etc).
-      throw makeFetchError(0, 'Network unreachable');
+      throw makeFetchError(0, 'JSONBin unreachable');
     }
     if (!r.ok) throw makeFetchError(r.status, 'JSONBin returned HTTP ' + r.status);
     const body = await r.json();
     if (Array.isArray(body)) return body;
     if (body && Array.isArray(body.records)) return body.records;
     return [];
+  }
+
+  // Dispatch: try Supabase first (primary), fall back to JSONBin if the user
+  // still has JSONBin credentials configured. This keeps the historical data
+  // accessible during the migration window.
+  async function fetchAll() {
+    if (isSupabaseConfigured()) {
+      try {
+        return await supabaseFetchAll();
+      } catch (supaErr) {
+        if (!creds) throw supaErr;
+        try { console.warn('Supabase fetch failed, falling back to JSONBin:', supaErr); } catch (_) {}
+        // fall through to JSONBin
+      }
+    }
+    return jsonbinFetchAll();
   }
 
   // ====== Last-known records cache (frente A) ======
@@ -1571,20 +1642,32 @@
   }
 
   // Toggles UI affordances based on whether we are in read-only bypass mode
-  // (entered from the gate without credentials).
+  // (entered from the gate without credentials) and whether Supabase is the
+  // primary backend (in which case the gate / sign-out flow is irrelevant).
   function applyReadonlyUi() {
     if (!btnDisconnectEl) return;
     if (readonlyMode) {
+      btnDisconnectEl.hidden = false;
       btnDisconnectEl.innerHTML =
         '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><path d="M15 3h4a2 2 0 0 1 2 2v14a2 2 0 0 1-2 2h-4"/><polyline points="10 17 15 12 10 7"/><line x1="15" y1="12" x2="3" y2="12"/></svg> Sign in to live';
-      btnDisconnectEl.title = 'Enter Bin ID and API key to see live data';
+      btnDisconnectEl.title = isSupabaseConfigured()
+        ? 'Reconnect to live Supabase data'
+        : 'Enter Bin ID and API key to see live data';
       if (btnSnapshotEl) btnSnapshotEl.hidden = true;
-    } else {
-      btnDisconnectEl.innerHTML =
-        '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><path d="M9 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h4"/><polyline points="16 17 21 12 16 7"/><line x1="21" y1="12" x2="9" y2="12"/></svg> Sign out';
-      btnDisconnectEl.title = 'Forget Bin ID and API key';
-      if (btnSnapshotEl) btnSnapshotEl.hidden = false;
+      return;
     }
+    if (isSupabaseConfigured() && !creds) {
+      // Supabase keys are baked in; there is nothing to sign out from on
+      // this device. Hide the button to avoid confusing the user.
+      btnDisconnectEl.hidden = true;
+      if (btnSnapshotEl) btnSnapshotEl.hidden = false;
+      return;
+    }
+    btnDisconnectEl.hidden = false;
+    btnDisconnectEl.innerHTML =
+      '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><path d="M9 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h4"/><polyline points="16 17 21 12 16 7"/><line x1="21" y1="12" x2="9" y2="12"/></svg> Sign out';
+    btnDisconnectEl.title = 'Forget Bin ID and API key';
+    if (btnSnapshotEl) btnSnapshotEl.hidden = false;
   }
 
   // Entered from the gate's bypass link. Loads the static snapshot and
@@ -1638,13 +1721,18 @@
   btnDownloadXlsxEl.addEventListener('click', handleDownloadXlsx);
   if (btnSnapshotEl) btnSnapshotEl.addEventListener('click', handleExportSnapshot);
   btnDisconnectEl.addEventListener('click', () => {
-    // In read-only mode this button is repurposed as "Sign in to live",
-    // which just takes the user back to the gate to enter credentials.
+    // In read-only mode this button is repurposed as "Sign in to live".
+    // With Supabase configured we go straight back to the live admin (no
+    // creds needed); otherwise we route back to the JSONBin gate.
     if (readonlyMode) {
       readonlyMode = false;
       allRecords = [];
       currentSource = 'none';
-      showGate();
+      if (isSupabaseConfigured()) {
+        bootAdmin();
+      } else {
+        showGate();
+      }
       return;
     }
     if (FIXED_BIN_ID && FIXED_API_KEY) {
@@ -1654,8 +1742,15 @@
     clearCreds();
     allRecords = [];
     currentSource = 'none';
-    showGate();
-    showToast('Signed out');
+    if (isSupabaseConfigured()) {
+      // Supabase keeps working; refresh the UI and stay in the admin.
+      applyReadonlyUi();
+      refreshFromCloud(false);
+      showToast('JSONBin credentials cleared');
+    } else {
+      showGate();
+      showToast('Signed out');
+    }
   });
 
   gateGoEl.addEventListener('click', async () => {
@@ -1691,7 +1786,11 @@
   setInterval(tickClock, 1000);
 
   loadCreds();
-  if (creds) {
+  // When Supabase is configured (the new primary backend), the JSONBin gate
+  // is no longer required to enter — the admin reads directly from Supabase.
+  // We still keep the gate available for legacy JSONBin reads via the bypass
+  // link, in case someone wants to consult historical bin data.
+  if (isSupabaseConfigured() || creds) {
     bootAdmin();
   } else {
     showGate();

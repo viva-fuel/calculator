@@ -12,7 +12,7 @@
  * actualización en dispositivos que ya tienen una SW vieja instalada.
  */
 
-const CACHE_VERSION = 'viva-fuel-v13';
+const CACHE_VERSION = 'viva-fuel-v14';
 const SHELL_CACHE   = CACHE_VERSION + '-shell';
 const RUNTIME_CACHE = CACHE_VERSION + '-runtime';
 
@@ -43,7 +43,8 @@ function isHtmlRequest(request) {
 }
 
 function isApiRequest(url) {
-  return /api\.jsonbin\.io|jsonbin\.io/i.test(url.hostname);
+  // Backend calls must always hit the network. Supabase REST + JSONBin REST.
+  return /api\.jsonbin\.io|jsonbin\.io|\.supabase\.co/i.test(url.hostname);
 }
 
 self.addEventListener('fetch', (event) => {

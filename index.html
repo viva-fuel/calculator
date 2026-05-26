@@ -1237,12 +1237,20 @@
   const PILOT_HISTORY_MAX = 10;
   const MAX_RECORDS = 500;         // tope para no inflar localStorage
 
-  // ====================== Backend compartido (JSONBin.io) ======================
-  // Pegá acá los datos de tu bin de JSONBin (https://jsonbin.io).
-  // Mientras estos valores estén vacíos, la app corre en MODO LOCAL — cada tablet
-  // ve solo sus propios registros. Apenas se setean, cada save logueado se sube
-  // automáticamente al bin compartido y aparece en admin.html.
-  // Ver SETUP_JSONBIN.md para los pasos (5 minutos).
+  // ====================== Backend compartido ======================
+  // Estrategia: Supabase es el backend PRIMARIO (Postgres real, INSERTs atómicos,
+  // escala miles de writes/seg, free tier 500MB). JSONBin queda como FALLBACK
+  // secundario por si Supabase tuviera un problema puntual, y también para que
+  // los registros históricos cargados antes de la migración a Supabase se sigan
+  // viendo hasta que terminemos de portarlos. Si los dos backends están vacíos,
+  // la app corre en MODO LOCAL (cada tablet ve solo sus propios registros).
+
+  // --- Primario: Supabase ---
+  const SUPABASE_URL      = 'https://bpbrvepsrscakhfserfb.supabase.co';
+  const SUPABASE_ANON_KEY = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImJwYnJ2ZXBzcnNjYWtoZnNlcmZiIiwicm9sZSI6ImFub24iLCJpYXQiOjE3Nzk3NDQzODgsImV4cCI6MjA5NTMyMDM4OH0.Wo9WcwPDjWVKvXSoCf97DKHpM7-_1mGFEwcWpatEUQI';
+  const SUPABASE_TABLE    = 'fuel_records';
+
+  // --- Fallback: JSONBin (legacy, free tier muy chico) ---
   const JSONBIN_BIN_ID  = '69f9210eaaba8821976fc1b9';
   const JSONBIN_API_KEY = '$2a$10$ehXoQ/vAsTbyvKl3LA6AO.BDsT4TrAKMQL1FvQXWx1AU3pLgbMRtO';
 
@@ -1803,17 +1811,89 @@
     }
   }
 
-  // ====================== Cloud (JSONBin.io — write-only desde piloto) ======================
-  // El piloto NO descarga registros del cloud; solo manda los suyos. La vista admin
-  // (admin.html) es la que lee el bin completo.
-  function isCloudConfigured() {
+  // ====================== Cloud (Supabase primario, JSONBin fallback) ======================
+  // El piloto NO descarga registros del cloud, solo manda los suyos. La vista
+  // admin (admin.html) es la que lee la tabla / bin completo.
+  function isSupabaseConfigured() {
+    return typeof SUPABASE_URL === 'string' && /^https:\/\//.test(SUPABASE_URL)
+        && typeof SUPABASE_ANON_KEY === 'string' && SUPABASE_ANON_KEY.length >= 40;
+  }
+  function isJsonbinConfigured() {
     return typeof JSONBIN_BIN_ID === 'string' && JSONBIN_BIN_ID.length >= 10
         && typeof JSONBIN_API_KEY === 'string' && JSONBIN_API_KEY.length >= 20;
   }
+  function isCloudConfigured() {
+    return isSupabaseConfigured() || isJsonbinConfigured();
+  }
 
+  // --- Supabase wire (Postgres usa snake_case, el frontend camelCase) ---
+  function toSupabaseWire(r) {
+    return {
+      id:        String(r.id || ''),
+      timestamp: r.iso || r.dateTime || '',
+      pilot_id:  r.pilotId || '',
+      flight:    r.flight || '',
+      fr_kg:     Number.isFinite(r.frKg)    ? r.frKg    : null,
+      fob_kg:    Number.isFinite(r.fobKg)   ? r.fobKg   : null,
+      total_kg:  Number.isFinite(r.totalKg) ? r.totalKg : null,
+      density:   Number.isFinite(r.density) ? r.density : null,
+      total_l:   Number.isFinite(r.totalL)  ? r.totalL  : null,
+      low_l:     Number.isFinite(r.lowL)    ? r.lowL    : null,
+      high_l:    Number.isFinite(r.highL)   ? r.highL   : null,
+      status:    r.status || 'OK',
+      device:    (typeof navigator !== 'undefined' && navigator.platform) || ''
+    };
+  }
+
+  function supabaseAuthHeaders() {
+    return {
+      'apikey':        SUPABASE_ANON_KEY,
+      'Authorization': 'Bearer ' + SUPABASE_ANON_KEY
+    };
+  }
+
+  // Single atomic POST. Idempotent on retries: ignore-duplicates means that if
+  // we already pushed this record id (e.g. previous attempt timed out after
+  // succeeding), Supabase returns 201 with empty body instead of a 409.
+  async function supabasePushRecord(record) {
+    const wire = toSupabaseWire(record);
+    if (!wire.id) throw new Error('Record without id');
+    const r = await fetch(SUPABASE_URL + '/rest/v1/' + SUPABASE_TABLE, {
+      method: 'POST',
+      headers: Object.assign({
+        'Content-Type': 'application/json',
+        'Prefer':       'resolution=ignore-duplicates,return=minimal'
+      }, supabaseAuthHeaders()),
+      body: JSON.stringify(wire),
+      cache: 'no-store'
+    });
+    if (!r.ok) throw new Error('Supabase POST ' + r.status);
+    return true;
+  }
+
+  // --- JSONBin wire (legacy, mantenemos por compatibilidad) ---
   const JSONBIN_BASE = 'https://api.jsonbin.io/v3/b/';
 
+  function toJsonbinWire(r) {
+    return {
+      id:        String(r.id || ''),
+      timestamp: r.iso || r.dateTime || '',
+      pilotId:   r.pilotId || '',
+      flight:    r.flight || '',
+      frKg:      Number.isFinite(r.frKg)    ? r.frKg    : null,
+      fobKg:     Number.isFinite(r.fobKg)   ? r.fobKg   : null,
+      totalKg:   Number.isFinite(r.totalKg) ? r.totalKg : null,
+      density:   Number.isFinite(r.density) ? r.density : null,
+      totalL:    Number.isFinite(r.totalL)  ? r.totalL  : null,
+      lowL:      Number.isFinite(r.lowL)    ? r.lowL    : null,
+      highL:     Number.isFinite(r.highL)   ? r.highL   : null,
+      status:    r.status || '',
+      device:    (typeof navigator !== 'undefined' && navigator.platform) || ''
+    };
+  }
+
   async function jsonbinFetchAll() {
+    if (!isJsonbinConfigured()) throw new Error('JSONBin not configured');
     const r = await fetch(JSONBIN_BASE + JSONBIN_BIN_ID + '/latest', {
       method: 'GET',
       headers: {
@@ -1841,30 +1921,10 @@
     if (!r.ok) throw new Error('JSONBin PUT ' + r.status);
   }
 
-  // Schema "humano" para que el bin sea legible si se mira directo en jsonbin.io.
-  function toWire(r) {
-    return {
-      id:        String(r.id || ''),
-      timestamp: r.iso || r.dateTime || '',
-      pilotId:   r.pilotId || '',
-      flight:    r.flight || '',
-      frKg:      Number.isFinite(r.frKg)    ? r.frKg    : null,
-      fobKg:     Number.isFinite(r.fobKg)   ? r.fobKg   : null,
-      totalKg:   Number.isFinite(r.totalKg) ? r.totalKg : null,
-      density:   Number.isFinite(r.density) ? r.density : null,
-      totalL:    Number.isFinite(r.totalL)  ? r.totalL  : null,
-      lowL:      Number.isFinite(r.lowL)    ? r.lowL    : null,
-      highL:     Number.isFinite(r.highL)   ? r.highL   : null,
-      status:    r.status || '',
-      device:    (typeof navigator !== 'undefined' && navigator.platform) || ''
-    };
-  }
-
-  // Append-with-verify: lee, agrega si falta el id, escribe, y reverifica que quedó.
-  // Si dos pilotos pisan al mismo tiempo, el segundo lo detecta en la verificación
-  // y reintenta. Para nuestro volumen alcanza con 3 intentos.
-  async function cloudPushRecord(record) {
-    const wire = toWire(record);
+  // Legacy append-with-verify: lee, agrega si falta el id, escribe, y reverifica
+  // que quedó. Se mantiene solo como fallback si Supabase no estuviera disponible.
+  async function jsonbinPushRecord(record) {
+    const wire = toJsonbinWire(record);
     const id = wire.id;
     if (!id) throw new Error('Record without id');
 
@@ -1888,6 +1948,24 @@
       await new Promise(res => setTimeout(res, 300 + Math.random() * 500));
     }
     throw new Error('Could not push after 3 attempts');
+  }
+
+  // --- Dispatch ---
+  // Front-end calls this. Tries Supabase first (the new robust backend), and
+  // only falls back to JSONBin if Supabase is unreachable AND JSONBin is still
+  // configured. Records are queued in localStorage if both fail.
+  async function cloudPushRecord(record) {
+    if (isSupabaseConfigured()) {
+      try {
+        await supabasePushRecord(record);
+        return true;
+      } catch (supaErr) {
+        if (!isJsonbinConfigured()) throw supaErr;
+        // Log so we can spot regressions in console without breaking the UX.
+        try { console.warn('Supabase push failed, falling back to JSONBin:', supaErr); } catch (_) {}
+      }
+    }
+    return jsonbinPushRecord(record);
   }
 
   function countPending() {
