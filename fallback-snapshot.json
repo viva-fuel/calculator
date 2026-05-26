@@ -1,0 +1,7 @@
+{
+  "snapshotAt": null,
+  "snapshotBy": "initial-empty",
+  "note": "Static fallback snapshot served by GitHub Pages. The admin reads this file when JSONBin is unreachable AND there is no local cache on the device. To populate it: open admin.html when JSONBin is healthy, click the 'Snapshot' button to copy the current records JSON, paste it here (replacing the whole file contents), commit and push. Pages republishes in ~30s and every admin device sees the new snapshot.",
+  "recordCount": 0,
+  "records": []
+}

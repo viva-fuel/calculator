@@ -539,6 +539,67 @@
     text-align: left;
   }
   .gate .btn { width: 100%; justify-content: center; padding: 12px; margin-top: 8px; }
+  .gate-bypass-row {
+    margin: 14px 0 0 !important;
+    padding-top: 14px;
+    border-top: 1px dashed var(--line);
+    font-size: 11px !important;
+    color: var(--muted) !important;
+  }
+  .gate-bypass {
+    color: var(--ink-2);
+    text-decoration: none;
+    font-family: var(--font-mono);
+    font-size: 10px;
+    letter-spacing: 0.18em;
+    text-transform: uppercase;
+    font-weight: 700;
+    transition: color 150ms ease;
+  }
+  .gate-bypass:hover { color: var(--viva-green-dark); }
+
+  /* ======================== SOURCE BANNER ======================== */
+  /* Appears above the records table whenever the data being shown is not
+     a live fetch from JSONBin. */
+  .source-banner {
+    margin: 16px 0 0;
+    padding: 12px 16px;
+    border-radius: var(--radius-sm);
+    border: 1px solid var(--line);
+    background: var(--surface-alt);
+    font-size: 13px;
+    line-height: 1.5;
+  }
+  .source-banner.warn {
+    border-color: rgba(255, 184, 0, 0.45);
+    background: #FFF7E0;
+    color: #6B4F00;
+  }
+  .source-banner.danger {
+    border-color: rgba(220, 38, 38, 0.45);
+    background: #FDECEC;
+    color: #7A1E1E;
+  }
+  .source-banner .sb-row {
+    display: flex;
+    align-items: flex-start;
+    gap: 12px;
+    flex-wrap: wrap;
+  }
+  .source-banner .sb-tag {
+    flex-shrink: 0;
+    font-family: var(--font-mono);
+    font-size: 10px;
+    letter-spacing: 0.18em;
+    text-transform: uppercase;
+    font-weight: 700;
+    padding: 4px 10px;
+    border-radius: 999px;
+    background: rgba(0, 0, 0, 0.06);
+  }
+  .source-banner.warn   .sb-tag { background: rgba(255, 184, 0, 0.2); }
+  .source-banner.danger .sb-tag { background: rgba(220, 38, 38, 0.18); }
+  .source-banner .sb-msg { flex: 1; min-width: 240px; }
 
   /* ======================== FOOTER ======================== */
   .foot {
@@ -631,6 +692,9 @@
   <p style="font-size: 11px; margin-top: 18px; color: var(--muted)">
     Don't have these? Open <strong>jsonbin.io</strong>, sign up (free), create a bin, then copy the Bin ID and Master Key from your dashboard.
   </p>
+  <p class="gate-bypass-row">
+    <a href="#" id="gateBypass" class="gate-bypass">View latest public snapshot (read-only) →</a>
+  </p>
 </div>
 
 <!-- ============== ADMIN UI (hidden until connected) ============== -->
@@ -688,12 +752,20 @@
           <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="7 10 12 15 17 10"/><line x1="12" y1="15" x2="12" y2="3"/></svg>
           CSV
         </button>
+        <button class="btn ghost" id="btnSnapshot" type="button" title="Copy current records as JSON, ready to paste into fallback-snapshot.json in the repo">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><rect x="9" y="9" width="13" height="13" rx="2" ry="2"/><path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1"/></svg>
+          Snapshot
+        </button>
         <button class="btn ghost" id="btnDisconnect" type="button" title="Forget Bin ID and API key">
           <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><path d="M9 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h4"/><polyline points="16 17 21 12 16 7"/><line x1="21" y1="12" x2="9" y2="12"/></svg>
           Sign out
         </button>
       </div>
     </div>
+
+    <!-- Source banner: explains what is being shown when JSONBin fails.
+         Hidden in the happy 'live' path. See updateBanner() in JS. -->
+    <div id="sourceBanner" class="source-banner" hidden></div>
 
     <div class="filters">
       <div class="filter-group">
@@ -773,8 +845,12 @@
   const FIXED_API_KEY = '';
 
   const STORAGE_KEY = 'viva_fuel_admin_creds';
+  const RECORDS_CACHE_KEY = 'viva_fuel_admin_records_cache';
   const AUTO_REFRESH_MS = 30000;
   const JSONBIN_BASE = 'https://api.jsonbin.io/v3/b/';
+  // Static fallback hosted on the same GitHub Pages site. Updated manually
+  // by committing to the repo when JSONBin is unreachable for too long.
+  const SNAPSHOT_URL = './fallback-snapshot.json';
 
   // ===================== DOM =====================
   const $ = (id) => document.getElementById(id);
@@ -795,7 +871,9 @@
   const btnRefreshEl = $('btnRefresh');
   const btnDownloadEl = $('btnDownload');
   const btnDownloadXlsxEl = $('btnDownloadXlsx');
+  const btnSnapshotEl = $('btnSnapshot');
   const btnDisconnectEl = $('btnDisconnect');
+  const gateBypassEl = $('gateBypass');
 
   const fSearchEl = $('fSearch');
   const fPilotEl = $('fPilot');
@@ -815,6 +893,21 @@
   let creds = null; // { binId, apiKey }
   let allRecords = [];
   let refreshTimer = null;
+  // Where the records currently shown come from. Drives the banner UX.
+  //   'live'     -> just fetched from JSONBin OK.
+  //   'cache'    -> JSONBin failed, we are showing the last successful
+  //                 fetch we cached on this device.
+  //   'snapshot' -> JSONBin failed and we had no cache, so we pulled the
+  //                 static fallback-snapshot.json hosted in the repo.
+  //   'none'     -> we have nothing to show.
+  let currentSource = 'none';
+  let lastFetchAt = null;     // ISO of last successful JSONBin fetch
+  let lastCacheAt = null;     // ISO of the cache being shown (if source='cache')
+  let lastSnapshotAt = null;  // ISO of the snapshot being shown (if source='snapshot')
+  let lastErrorInfo = null;   // { status, message } of the last JSONBin failure
+  // Read-only mode is entered from the gate via the "view latest public
+  // snapshot" bypass link. It hides anything that would require auth.
+  let readonlyMode = false;
 
   // ===================== Helpers =====================
   function showToast(msg, kind) {
@@ -950,21 +1043,157 @@
   }
 
   // ===================== Fetch =====================
+  // Error shape we throw from fetchAll() so refreshFromCloud() can render a
+  // useful, specific message in the fallback banner instead of "Sync error".
+  function makeFetchError(status, message) {
+    const err = new Error(message || ('JSONBin GET ' + status));
+    err.status = status || 0;
+    return err;
+  }
+
   async function fetchAll() {
-    if (!creds) throw new Error('No credentials');
-    const r = await fetch(JSONBIN_BASE + creds.binId + '/latest', {
-      method: 'GET',
-      headers: { 'X-Master-Key': creds.apiKey, 'X-Bin-Meta': 'false' },
-      cache: 'no-store'
-    });
-    if (!r.ok) throw new Error('JSONBin GET ' + r.status);
+    if (!creds) throw makeFetchError(0, 'No credentials');
+    let r;
+    try {
+      r = await fetch(JSONBIN_BASE + creds.binId + '/latest', {
+        method: 'GET',
+        headers: { 'X-Master-Key': creds.apiKey, 'X-Bin-Meta': 'false' },
+        cache: 'no-store'
+      });
+    } catch (netErr) {
+      // Network-level failure (DNS, CORS preflight, total timeout, etc).
+      throw makeFetchError(0, 'Network unreachable');
+    }
+    if (!r.ok) throw makeFetchError(r.status, 'JSONBin returned HTTP ' + r.status);
     const body = await r.json();
     if (Array.isArray(body)) return body;
     if (body && Array.isArray(body.records)) return body.records;
     return [];
   }
 
+  // ====== Last-known records cache (frente A) ======
+  // Persists the most recent successful JSONBin response on this device so
+  // that if JSONBin goes down on a later refresh, we still show *something*
+  // instead of an empty table.
+  function cacheRecords(arr) {
+    try {
+      localStorage.setItem(RECORDS_CACHE_KEY, JSON.stringify({
+        records: arr,
+        cachedAt: new Date().toISOString()
+      }));
+    } catch (e) { /* quota or private mode, non-fatal */ }
+  }
+  function loadCachedRecords() {
+    try {
+      const raw = localStorage.getItem(RECORDS_CACHE_KEY);
+      if (!raw) return null;
+      const obj = JSON.parse(raw);
+      if (!obj || !Array.isArray(obj.records)) return null;
+      return obj;
+    } catch (e) { return null; }
+  }
+
+  // ====== Repo snapshot fallback (frente C) ======
+  // Pulled from the same GitHub Pages site as the admin itself, so its
+  // availability is independent from JSONBin's. Updated manually by
+  // committing to fallback-snapshot.json in the repo.
+  async function fetchRepoSnapshot() {
+    const url = SNAPSHOT_URL + '?cb=' + Date.now();
+    let r;
+    try {
+      r = await fetch(url, { cache: 'no-store' });
+    } catch (e) {
+      throw makeFetchError(0, 'Snapshot network error');
+    }
+    if (!r.ok) throw makeFetchError(r.status, 'Snapshot HTTP ' + r.status);
+    const body = await r.json();
+    const records = Array.isArray(body)
+      ? body
+      : (body && Array.isArray(body.records) ? body.records : []);
+    return {
+      records,
+      snapshotAt: (body && body.snapshotAt) || null,
+      note: (body && body.note) || null
+    };
+  }
+
+  function sortByTimestampDesc(arr) {
+    return arr.slice().sort((a, b) => {
+      const ta = new Date(a.timestamp || 0).getTime();
+      const tb = new Date(b.timestamp || 0).getTime();
+      return tb - ta;
+    });
+  }
+
+  // Updates all the source-dependent UI (banner, status pill, subtitle).
+  function applySourceUi() {
+    updateBanner();
+    if (currentSource === 'live')          setCloudStatus('synced');
+    else if (currentSource === 'cache')    setCloudStatus('error', 'Sync error · cached');
+    else if (currentSource === 'snapshot') setCloudStatus('error', 'Sync error · snapshot');
+    else                                   setCloudStatus('error');
+
+    if (!recordsSubEl) return;
+    const total = allRecords.length;
+    const totalTxt = total + ' record' + (total === 1 ? '' : 's');
+    if (currentSource === 'live') {
+      const now = new Date();
+      recordsSubEl.textContent = 'Last refresh: ' + pad(now.getHours()) + ':' + pad(now.getMinutes()) + ':' + pad(now.getSeconds())
+        + ' · ' + totalTxt + ' total';
+    } else if (currentSource === 'cache') {
+      recordsSubEl.textContent = 'Showing cached data · ' + totalTxt + ' total (last successful sync ' + fmtRelative(lastCacheAt) + ')';
+    } else if (currentSource === 'snapshot') {
+      recordsSubEl.textContent = 'Showing repo snapshot · ' + totalTxt + ' total' + (lastSnapshotAt ? ' (committed ' + fmtRelative(lastSnapshotAt) + ')' : '');
+    } else {
+      recordsSubEl.textContent = 'No data available yet.';
+    }
+  }
+
   async function refreshFromCloud(silent) {
+    if (readonlyMode) {
+      // In read-only bypass mode the only source is the repo snapshot.
+      await refreshFromSnapshot(silent);
+      return;
+    }
+    if (!navigator.onLine) {
+      setCloudStatus('offline');
+      if (!silent) showToast('No internet connection', 'warn');
+      // Still try to surface cached data while offline so the table is not
+      // empty on a transient drop.
+      tryLoadCacheIntoView();
+      return;
+    }
+    setCloudStatus('syncing');
+    try {
+      const arr = await fetchAll();
+      allRecords = sortByTimestampDesc(arr);
+      cacheRecords(allRecords);
+      currentSource  = 'live';
+      lastFetchAt    = new Date().toISOString();
+      lastErrorInfo  = null;
+      rebuildPilotFilter();
+      render();
+      applySourceUi();
+      if (!silent) showToast('Refreshed · ' + allRecords.length + ' record' + (allRecords.length === 1 ? '' : 's'));
+    } catch (e) {
+      lastErrorInfo = { status: e.status || 0, message: e.message || 'Unknown error' };
+      // Try to keep showing useful data. Order matters: prefer the local
+      // cache (likely fresher) over the repo snapshot.
+      const filled = tryLoadCacheIntoView() || await tryLoadSnapshotIntoView();
+      if (!filled) {
+        currentSource = 'none';
+        applySourceUi();
+      }
+      if (!silent) {
+        const human = describeError(lastErrorInfo);
+        showToast(human, 'warn');
+      }
+    }
+  }
+
+  // Read-only path: only consults the repo snapshot. Used by the gate
+  // bypass link "View latest public snapshot".
+  async function refreshFromSnapshot(silent) {
     if (!navigator.onLine) {
       setCloudStatus('offline');
       if (!silent) showToast('No internet connection', 'warn');
@@ -972,24 +1201,127 @@
     }
     setCloudStatus('syncing');
     try {
-      const arr = await fetchAll();
-      allRecords = arr.slice().sort((a, b) => {
-        const ta = new Date(a.timestamp || 0).getTime();
-        const tb = new Date(b.timestamp || 0).getTime();
-        return tb - ta;
-      });
+      const snap = await fetchRepoSnapshot();
+      allRecords      = sortByTimestampDesc(snap.records);
+      currentSource   = 'snapshot';
+      lastSnapshotAt  = snap.snapshotAt;
+      lastErrorInfo   = null;
       rebuildPilotFilter();
       render();
-      setCloudStatus('synced');
-      const now = new Date();
-      if (recordsSubEl) {
-        recordsSubEl.textContent = 'Last refresh: ' + pad(now.getHours()) + ':' + pad(now.getMinutes()) + ':' + pad(now.getSeconds())
-          + ' · ' + allRecords.length + ' record' + (allRecords.length === 1 ? '' : 's') + ' total';
-      }
-      if (!silent) showToast('Refreshed · ' + allRecords.length + ' record' + (allRecords.length === 1 ? '' : 's'));
+      applySourceUi();
+      if (!silent) showToast('Snapshot loaded · ' + allRecords.length + ' record' + (allRecords.length === 1 ? '' : 's'));
     } catch (e) {
-      setCloudStatus('error');
-      if (!silent) showToast('Could not reach the cloud', 'warn');
+      lastErrorInfo = { status: e.status || 0, message: e.message || 'Snapshot unavailable' };
+      currentSource = 'none';
+      allRecords = [];
+      rebuildPilotFilter();
+      render();
+      applySourceUi();
+      if (!silent) showToast('Snapshot unavailable (' + (e.status || 'network') + ')', 'warn');
+    }
+  }
+
+  // Helpers used by the JSONBin fail path so we don't end up with an empty
+  // screen and a scary "Sync error" pill when we actually have data.
+  function tryLoadCacheIntoView() {
+    const cached = loadCachedRecords();
+    if (!cached || cached.records.length === 0) return false;
+    allRecords    = sortByTimestampDesc(cached.records);
+    currentSource = 'cache';
+    lastCacheAt   = cached.cachedAt;
+    rebuildPilotFilter();
+    render();
+    applySourceUi();
+    return true;
+  }
+  async function tryLoadSnapshotIntoView() {
+    try {
+      const snap = await fetchRepoSnapshot();
+      if (!snap.records || snap.records.length === 0) return false;
+      allRecords     = sortByTimestampDesc(snap.records);
+      currentSource  = 'snapshot';
+      lastSnapshotAt = snap.snapshotAt;
+      rebuildPilotFilter();
+      render();
+      applySourceUi();
+      return true;
+    } catch (e) {
+      return false;
+    }
+  }
+
+  function describeError(info) {
+    if (!info) return 'Could not reach the cloud';
+    const s = info.status;
+    if (s === 0)                  return 'Network unreachable · check connection';
+    if (s === 401 || s === 403)   return 'Auth rejected by JSONBin (HTTP ' + s + ')';
+    if (s === 404)                return 'Bin not found (HTTP 404)';
+    if (s === 429)                return 'JSONBin rate limit hit (HTTP 429)';
+    if (s >= 500 && s < 600)      return 'JSONBin service unavailable (HTTP ' + s + ')';
+    return 'JSONBin error (HTTP ' + s + ')';
+  }
+
+  function fmtRelative(iso) {
+    if (!iso) return 'just now';
+    const t = new Date(iso).getTime();
+    if (!isFinite(t)) return 'unknown';
+    const diffSec = Math.max(0, Math.round((Date.now() - t) / 1000));
+    if (diffSec < 60)    return diffSec + 's ago';
+    const min = Math.round(diffSec / 60);
+    if (min < 60)        return min + ' min ago';
+    const hr = Math.round(min / 60);
+    if (hr < 24)         return hr + ' h ago';
+    const days = Math.round(hr / 24);
+    return days + ' day' + (days === 1 ? '' : 's') + ' ago';
+  }
+
+  // ====== Banner (frente B - explicit error UX) ======
+  // Visual element that explains which source we are showing and why, so
+  // the user is never left guessing when JSONBin glitches.
+  function updateBanner() {
+    const el = $('sourceBanner');
+    if (!el) return;
+    if (currentSource === 'live') {
+      el.hidden = true;
+      el.className = 'source-banner';
+      el.innerHTML = '';
+      return;
+    }
+    if (currentSource === 'cache') {
+      el.hidden = false;
+      el.className = 'source-banner warn';
+      el.innerHTML =
+        '<div class="sb-row">' +
+          '<span class="sb-tag">Cached data</span>' +
+          '<span class="sb-msg">JSONBin is unreachable (' + escapeHtml(describeError(lastErrorInfo)) + '). ' +
+          'Showing the last successful sync (' + escapeHtml(fmtRelative(lastCacheAt)) + '). ' +
+          'Pilots\u2019 history is safe in the bin and will reappear automatically when the service recovers. ' +
+          'Auto-retry every ' + (AUTO_REFRESH_MS / 1000) + 's.</span>' +
+        '</div>';
+    } else if (currentSource === 'snapshot') {
+      el.hidden = false;
+      el.className = 'source-banner warn';
+      el.innerHTML =
+        '<div class="sb-row">' +
+          '<span class="sb-tag">Repo snapshot</span>' +
+          '<span class="sb-msg">' +
+            (readonlyMode
+              ? 'Read-only view of the latest manual snapshot' + (lastSnapshotAt ? ' (' + escapeHtml(fmtRelative(lastSnapshotAt)) + ')' : '') + '. '
+              : 'JSONBin is unreachable (' + escapeHtml(describeError(lastErrorInfo)) + '). ' +
+                'Showing the manual snapshot committed to the repo' + (lastSnapshotAt ? ' ' + escapeHtml(fmtRelative(lastSnapshotAt)) : '') + '. ') +
+            'Pilots\u2019 new loads are queued locally on each device and will sync when JSONBin recovers.' +
+          '</span>' +
+        '</div>';
+    } else {
+      el.hidden = false;
+      el.className = 'source-banner danger';
+      el.innerHTML =
+        '<div class="sb-row">' +
+          '<span class="sb-tag">No data</span>' +
+          '<span class="sb-msg">' + escapeHtml(describeError(lastErrorInfo)) + '. ' +
+            'No cached data on this device and no repo snapshot available. ' +
+            'Auto-retry every ' + (AUTO_REFRESH_MS / 1000) + 's.</span>' +
+        '</div>';
     }
   }
 
@@ -1184,6 +1516,90 @@
     }
   }
 
+  // ===================== Snapshot export (frente D) =====================
+  // Builds the exact JSON shape expected by fetchRepoSnapshot() and copies
+  // it to the clipboard. The user then pastes it into the chat (or directly
+  // into the repo) so the admin can commit it to fallback-snapshot.json,
+  // making the data visible to every admin device during a JSONBin outage.
+  function buildSnapshotPayload() {
+    return {
+      snapshotAt: new Date().toISOString(),
+      snapshotBy: 'admin-export',
+      source: currentSource,
+      sourceFreshness: currentSource === 'live'
+        ? { lastFetchAt: lastFetchAt }
+        : (currentSource === 'cache'    ? { lastCacheAt: lastCacheAt }
+        :  (currentSource === 'snapshot' ? { lastSnapshotAt: lastSnapshotAt }
+        :  null)),
+      note: 'Manual snapshot exported from admin.html. Commit this JSON to '
+          + 'fallback-snapshot.json at the repo root to serve it as the '
+          + 'read-only fallback while JSONBin is unreachable.',
+      recordCount: allRecords.length,
+      records: allRecords
+    };
+  }
+  async function handleExportSnapshot() {
+    if (allRecords.length === 0) {
+      showToast('Nothing to snapshot · no records loaded', 'warn');
+      return;
+    }
+    const payload = buildSnapshotPayload();
+    const text = JSON.stringify(payload, null, 2);
+    let copied = false;
+    try {
+      if (navigator.clipboard && navigator.clipboard.writeText) {
+        await navigator.clipboard.writeText(text);
+        copied = true;
+      }
+    } catch (e) { /* fall through to download */ }
+    if (!copied) {
+      // Clipboard blocked (insecure context, permissions). Fall back to
+      // downloading the file so the user can attach it.
+      const blob = new Blob([text], { type: 'application/json;charset=utf-8' });
+      const url = URL.createObjectURL(blob);
+      const a = document.createElement('a');
+      a.href = url;
+      a.download = 'fallback-snapshot.json';
+      document.body.appendChild(a);
+      a.click();
+      document.body.removeChild(a);
+      URL.revokeObjectURL(url);
+      showToast('Snapshot downloaded · attach fallback-snapshot.json to chat', 'warn');
+      return;
+    }
+    showToast('Snapshot JSON copied to clipboard · ' + allRecords.length + ' records');
+  }
+
+  // Toggles UI affordances based on whether we are in read-only bypass mode
+  // (entered from the gate without credentials).
+  function applyReadonlyUi() {
+    if (!btnDisconnectEl) return;
+    if (readonlyMode) {
+      btnDisconnectEl.innerHTML =
+        '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><path d="M15 3h4a2 2 0 0 1 2 2v14a2 2 0 0 1-2 2h-4"/><polyline points="10 17 15 12 10 7"/><line x1="15" y1="12" x2="3" y2="12"/></svg> Sign in to live';
+      btnDisconnectEl.title = 'Enter Bin ID and API key to see live data';
+      if (btnSnapshotEl) btnSnapshotEl.hidden = true;
+    } else {
+      btnDisconnectEl.innerHTML =
+        '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><path d="M9 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h4"/><polyline points="16 17 21 12 16 7"/><line x1="21" y1="12" x2="9" y2="12"/></svg> Sign out';
+      btnDisconnectEl.title = 'Forget Bin ID and API key';
+      if (btnSnapshotEl) btnSnapshotEl.hidden = false;
+    }
+  }
+
+  // Entered from the gate's bypass link. Loads the static snapshot and
+  // shows the admin UI in read-only mode (no creds required, no writes).
+  async function enterReadonlySnapshotMode() {
+    readonlyMode = true;
+    creds = null;
+    showAdmin();
+    applyReadonlyUi();
+    if (refreshTimer) clearInterval(refreshTimer);
+    // Snapshot is static so polling adds nothing; refresh only on demand
+    // (manual button click or visibility change).
+    await refreshFromSnapshot(true);
+  }
+
   // ===================== Clock =====================
   const months = ['JAN','FEB','MAR','APR','MAY','JUN','JUL','AUG','SEP','OCT','NOV','DEC'];
   function tickClock() {
@@ -1194,6 +1610,8 @@
 
   // ===================== Boot =====================
   function bootAdmin() {
+    readonlyMode = false;
+    applyReadonlyUi();
     showAdmin();
     refreshFromCloud(true);
     if (refreshTimer) clearInterval(refreshTimer);
@@ -1218,13 +1636,24 @@
   btnRefreshEl.addEventListener('click', () => refreshFromCloud(false));
   btnDownloadEl.addEventListener('click', handleDownload);
   btnDownloadXlsxEl.addEventListener('click', handleDownloadXlsx);
+  if (btnSnapshotEl) btnSnapshotEl.addEventListener('click', handleExportSnapshot);
   btnDisconnectEl.addEventListener('click', () => {
+    // In read-only mode this button is repurposed as "Sign in to live",
+    // which just takes the user back to the gate to enter credentials.
+    if (readonlyMode) {
+      readonlyMode = false;
+      allRecords = [];
+      currentSource = 'none';
+      showGate();
+      return;
+    }
     if (FIXED_BIN_ID && FIXED_API_KEY) {
       showToast('Credentials are hard-coded; cannot sign out', 'warn');
       return;
     }
     clearCreds();
     allRecords = [];
+    currentSource = 'none';
     showGate();
     showToast('Signed out');
   });
@@ -1244,6 +1673,13 @@
       if (e.key === 'Enter') { e.preventDefault(); gateGoEl.click(); }
     });
   });
+
+  if (gateBypassEl) {
+    gateBypassEl.addEventListener('click', (e) => {
+      e.preventDefault();
+      enterReadonlySnapshotMode();
+    });
+  }
 
   window.addEventListener('online', () => refreshFromCloud(true));
   window.addEventListener('offline', () => setCloudStatus('offline'));
