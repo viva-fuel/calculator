@@ -1398,7 +1398,7 @@
 
 <footer class="foot">
   <div><span class="stripe" aria-hidden="true"></span> Viva Aerobus · Fuel Operations · Internal operational document</div>
-  <div id="buildInfo">v1.1 · offline-ready</div>
+  <div id="buildInfo">v1.2 · offline-ready</div>
 </footer>
 
 <div class="confirm-overlay" id="confirmOverlay" aria-modal="true" role="dialog" aria-label="Upload confirmed" hidden>
@@ -2064,6 +2064,15 @@
       setError('f-flight', true, 'Use 2-3 letters + 1-4 digits (e.g. VB1234).');
       ok = false;
     }
+    // Departure airport también es obligatorio para registrar "No info from GH".
+    const departure = getDeparture();
+    if (!departure) {
+      setError('f-departure', true, 'Departure airport is required.');
+      ok = false;
+    } else if (!DEPARTURE_AIRPORTS.includes(departure)) {
+      setError('f-departure', true, 'Please select a valid departure airport.');
+      ok = false;
+    }
     return ok;
   }
 
@@ -2089,7 +2098,8 @@
   function isMinFormValidForNoInfo() {
     if (!validatePilotName(getPilotId()).ok) return false;
     const { flight } = readInputs();
-    return !!flight && FLIGHT_RE.test(flight);
+    if (!flight || !FLIGHT_RE.test(flight)) return false;
+    return DEPARTURE_AIRPORTS.includes(getDeparture());
   }
   function syncSubmitState() {
     const fullOk = isFormFullyValid();
@@ -2107,7 +2117,7 @@
     if (btnNoInfo) {
       btnNoInfo.disabled = !minOk;
       btnNoInfo.setAttribute('aria-disabled', String(!minOk));
-      btnNoInfo.title = minOk ? '' : 'Pilot name and flight number are required';
+      btnNoInfo.title = minOk ? '' : 'Pilot name, flight number and departure airport are required';
     }
   }
   // Marca error en un campo solo si su valor actual es inválido (no si está
