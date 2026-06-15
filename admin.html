@@ -463,6 +463,11 @@
     color: var(--viva-magenta-dark);
   }
   .pill.no-info .d { background: var(--viva-magenta); }
+  .pill.wrong-load {
+    background: #FEF2F2;
+    color: #991B1B;
+  }
+  .pill.wrong-load .d { background: #DC2626; }
 
   .empty {
     padding: 64px 24px;
@@ -794,6 +799,7 @@
         <select id="fStatus">
           <option value="">All</option>
           <option value="OK">OK</option>
+          <option value="WRONG_LOAD">Wrong load</option>
           <option value="NO_INFO">No GH info</option>
         </select>
       </div>
@@ -807,6 +813,7 @@
               <th>Date / Time</th>
               <th>Pilot</th>
               <th>Flight</th>
+              <th>Departure</th>
               <th>FR (KG)</th>
               <th>FOB (KG)</th>
               <th>Total (KG)</th>
@@ -1077,6 +1084,7 @@
       timestamp: row.timestamp,
       pilotId:   row.pilot_id,
       flight:    row.flight,
+      departureAirport: row.departure_airport || '',
       frKg:      row.fr_kg,
       fobKg:     row.fob_kg,
       totalKg:   row.total_kg,
@@ -1091,27 +1099,49 @@
 
   async function supabaseFetchAll() {
     if (!isSupabaseConfigured()) throw makeFetchError(0, 'Supabase not configured');
-    // Pull recent first so even partial responses are useful; PostgREST caps
-    // at 1000 rows by default which is plenty for this volume.
+    // PostgREST limita cada respuesta a 1000 filas. Para traer ABSOLUTAMENTE
+    // todos los registros paginamos con el header Range en bloques de 1000
+    // hasta que una página devuelva menos del tamaño de página. Ordenamos por
+    // timestamp desc (recientes primero) con id como desempate estable, y
+    // deduplicamos por id por si entra un registro nuevo entre páginas.
+    const PAGE = 1000;
+    const headersBase = {
+      'apikey':        SUPABASE_ANON_KEY,
+      'Authorization': 'Bearer ' + SUPABASE_ANON_KEY
+    };
     const url = SUPABASE_URL + '/rest/v1/' + SUPABASE_TABLE
-      + '?select=*&order=timestamp.desc&limit=1000';
-    let r;
-    try {
-      r = await fetch(url, {
-        method: 'GET',
-        headers: {
-          'apikey':        SUPABASE_ANON_KEY,
-          'Authorization': 'Bearer ' + SUPABASE_ANON_KEY
-        },
-        cache: 'no-store'
-      });
-    } catch (netErr) {
-      throw makeFetchError(0, 'Supabase unreachable');
+      + '?select=*&order=timestamp.desc,id.desc';
+    const byId = new Map();
+    let offset = 0;
+    for (let guard = 0; guard < 1000; guard++) {
+      let r;
+      try {
+        r = await fetch(url, {
+          method: 'GET',
+          headers: Object.assign({
+            'Range-Unit': 'items',
+            'Range':      offset + '-' + (offset + PAGE - 1)
+          }, headersBase),
+          cache: 'no-store'
+        });
+      } catch (netErr) {
+        // Si ya trajimos algo, devolvemos lo que tengamos; si no, propagamos.
+        if (byId.size > 0) break;
+        throw makeFetchError(0, 'Supabase unreachable');
+      }
+      // 200 (full) y 206 (partial/ranged) son OK. 416 = pedimos más allá del final.
+      if (r.status === 416) break;
+      if (!r.ok) {
+        if (byId.size > 0) break;
+        throw makeFetchError(r.status, 'Supabase returned HTTP ' + r.status);
+      }
+      const body = await r.json();
+      if (!Array.isArray(body) || body.length === 0) break;
+      body.forEach((row) => { if (row && row.id != null) byId.set(String(row.id), row); });
+      if (body.length < PAGE) break;
+      offset += PAGE;
     }
-    if (!r.ok) throw makeFetchError(r.status, 'Supabase returned HTTP ' + r.status);
-    const body = await r.json();
-    if (!Array.isArray(body)) return [];
-    return body.map(fromSupabaseWire);
+    return Array.from(byId.values()).map(fromSupabaseWire);
   }
 
   async function jsonbinFetchAll() {
@@ -1431,6 +1461,7 @@
         const blob = (
           (r.pilotId || '') + ' ' +
           (r.flight || '')  + ' ' +
+          (r.departureAirport || '') + ' ' +
           (r.timestamp || '') + ' ' +
           (r.status || '')
         ).toLowerCase();
@@ -1468,16 +1499,23 @@
 
     const rows = filtered.map(r => {
       const isOk = r.status === 'OK';
+      const isWrong = r.status === 'WRONG_LOAD';
       const range = (Number.isFinite(r.lowL) && Number.isFinite(r.highL))
         ? (fmtL(r.lowL) + ' – ' + fmtL(r.highL))
         : '—';
-      const pill = isOk
-        ? '<span class="pill ok"><span class="d"></span>OK</span>'
-        : '<span class="pill no-info"><span class="d"></span>No GH info</span>';
+      let pill;
+      if (isOk) {
+        pill = '<span class="pill ok"><span class="d"></span>OK</span>';
+      } else if (isWrong) {
+        pill = '<span class="pill wrong-load"><span class="d"></span>Wrong load</span>';
+      } else {
+        pill = '<span class="pill no-info"><span class="d"></span>No GH info</span>';
+      }
       return '<tr>' +
         '<td>' + escapeHtml(fmtDateTime(r.timestamp)) + '</td>' +
         '<td class="pilot">' + escapeHtml(r.pilotId || '—') + '</td>' +
         '<td class="flight">' + escapeHtml(r.flight || '—') + '</td>' +
+        '<td class="flight">' + escapeHtml(r.departureAirport || '—') + '</td>' +
         '<td>' + (Number.isFinite(r.frKg)    ? fmtInt(r.frKg)    : '—') + '</td>' +
         '<td>' + (Number.isFinite(r.fobKg)   ? fmtInt(r.fobKg)   : '—') + '</td>' +
         '<td>' + (Number.isFinite(r.totalKg) ? fmtInt(r.totalKg) : '—') + '</td>' +
@@ -1499,16 +1537,21 @@
   }
   function buildCsv(arr) {
     const headers = [
-      'Date/Time', 'ISO', 'Pilot ID', 'Flight', 'FR (KG)', 'FOB (KG)', 'Total (KG)',
+      'Date/Time', 'ISO', 'Pilot ID', 'Flight', 'Departure Airport', 'FR (KG)', 'FOB (KG)', 'Total (KG)',
       'Density (kg/L)', 'Total (L)', 'Low (L)', 'High (L)', 'Status'
     ];
     const lines = [headers.join(';')];
     arr.forEach(r => {
+      let statusLabel;
+      if (r.status === 'OK') statusLabel = 'OK';
+      else if (r.status === 'WRONG_LOAD') statusLabel = 'Wrong load';
+      else statusLabel = 'No ground handler info';
       lines.push([
         fmtDateTime(r.timestamp),
         r.timestamp || '',
         r.pilotId || '',
         r.flight || '',
+        r.departureAirport || '',
         Number.isFinite(r.frKg) ? r.frKg : '',
         Number.isFinite(r.fobKg) ? r.fobKg : '',
         Number.isFinite(r.totalKg) ? r.totalKg : '',
@@ -1516,7 +1559,7 @@
         Number.isFinite(r.totalL) ? r.totalL.toFixed(2) : '',
         Number.isFinite(r.lowL) ? r.lowL.toFixed(2) : '',
         Number.isFinite(r.highL) ? r.highL.toFixed(2) : '',
-        r.status === 'OK' ? 'OK' : 'No ground handler info'
+        statusLabel
       ].map(csvEscape).join(';'));
     });
     return lines.join('\r\n');
@@ -1549,6 +1592,7 @@
       'Date / Time': r.timestamp ? new Date(r.timestamp) : '',
       'Pilot ID':    r.pilotId || '',
       'Flight':      r.flight || '',
+      'Departure Airport': r.departureAirport || '',
       'FR (KG)':     Number.isFinite(r.frKg) ? r.frKg : '',
       'FOB (KG)':    Number.isFinite(r.fobKg) ? r.fobKg : '',
       'Total (KG)':  Number.isFinite(r.totalKg) ? r.totalKg : '',
@@ -1556,7 +1600,7 @@
       'Total (L)':   Number.isFinite(r.totalL) ? Number(r.totalL.toFixed(2)) : '',
       'Low (L)':     Number.isFinite(r.lowL) ? Number(r.lowL.toFixed(2)) : '',
       'High (L)':    Number.isFinite(r.highL) ? Number(r.highL.toFixed(2)) : '',
-      'Status':      r.status === 'OK' ? 'OK' : 'No ground handler info'
+      'Status':      (r.status === 'OK' ? 'OK' : (r.status === 'WRONG_LOAD' ? 'Wrong load' : 'No ground handler info'))
     }));
   }
   function handleDownloadXlsx() {
