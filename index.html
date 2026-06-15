@@ -992,6 +992,169 @@
   input[type="number"]::-webkit-outer-spin-button,
   input[type="number"]::-webkit-inner-spin-button { -webkit-appearance: none; margin: 0; }
   input[type="number"] { -moz-appearance: textfield; appearance: textfield; }
+
+  /* ======================== WRONG LOAD ======================== */
+  .pill.wrong-load {
+    color: #991B1B;
+    background: #FEF2F2;
+    border-color: rgba(153, 27, 27, 0.25);
+  }
+  .btn.danger {
+    --btn-bg: white;
+    --btn-fg: #991B1B;
+    --btn-border: #DC2626;
+  }
+  .btn.danger:hover:not(:disabled) {
+    --btn-bg: #DC2626;
+    --btn-fg: white;
+  }
+
+  /* ======================== AIRPORT AUTOCOMPLETE ======================== */
+  .airport-suggestions {
+    position: absolute;
+    top: calc(100% + 4px);
+    left: 0;
+    right: 0;
+    z-index: 200;
+    background: var(--surface);
+    border: 1.5px solid var(--viva-green);
+    border-radius: var(--radius-md);
+    box-shadow: var(--shadow-lg);
+    max-height: 220px;
+    overflow-y: auto;
+    padding: 4px 0;
+    list-style: none;
+    margin: 0;
+  }
+  .airport-suggestions[hidden] { display: none !important; }
+  .airport-suggestions li {
+    padding: 10px 16px;
+    font-family: var(--font-mono);
+    font-size: 14px;
+    font-weight: 600;
+    color: var(--ink);
+    cursor: pointer;
+    letter-spacing: 0.04em;
+    transition: background 100ms ease;
+  }
+  .airport-suggestions li:hover,
+  .airport-suggestions li[aria-selected="true"] {
+    background: var(--viva-green-soft);
+    color: var(--viva-green-dark);
+  }
+  .airport-suggestions li mark {
+    background: transparent;
+    color: var(--viva-green);
+    font-weight: 800;
+  }
+
+  /* ======================== CONFIRMATION MODAL ======================== */
+  .confirm-overlay {
+    position: fixed;
+    inset: 0;
+    z-index: 300;
+    background: rgba(10, 14, 10, 0.65);
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    padding: 24px;
+    opacity: 0;
+    pointer-events: none;
+    transition: opacity 240ms ease;
+    backdrop-filter: blur(4px);
+    -webkit-backdrop-filter: blur(4px);
+  }
+  .confirm-overlay[hidden] { display: none !important; }
+  .confirm-overlay.show { opacity: 1; pointer-events: auto; }
+  .confirm-overlay.show .confirm-card {
+    transform: scale(1);
+    opacity: 1;
+  }
+  .confirm-card {
+    position: relative;
+    background: var(--surface);
+    border-radius: var(--radius-lg);
+    box-shadow: var(--shadow-lg), 0 0 0 1px var(--line);
+    padding: 44px 40px 36px;
+    max-width: 480px;
+    width: 100%;
+    text-align: center;
+    transform: scale(0.92);
+    opacity: 0;
+    transition: transform 280ms cubic-bezier(.2,.8,.2,1), opacity 240ms ease;
+  }
+  .confirm-close {
+    position: absolute;
+    top: 14px;
+    right: 14px;
+    width: 32px;
+    height: 32px;
+    border-radius: 50%;
+    border: 1px solid var(--line);
+    background: var(--surface-alt);
+    color: var(--muted);
+    font-size: 18px;
+    line-height: 1;
+    cursor: pointer;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    transition: background 140ms ease, color 140ms ease;
+    padding: 0;
+  }
+  .confirm-close:hover { background: var(--line); color: var(--ink); }
+  .confirm-icon {
+    width: 72px;
+    height: 72px;
+    border-radius: 50%;
+    background: var(--viva-green-soft);
+    border: 2px solid rgba(0, 174, 68, 0.25);
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    margin: 0 auto 22px;
+  }
+  .confirm-icon svg {
+    width: 36px;
+    height: 36px;
+    color: var(--viva-green);
+  }
+  .confirm-title {
+    font-family: var(--font-display);
+    font-size: clamp(17px, 2.4vw, 22px);
+    font-weight: 700;
+    letter-spacing: -0.025em;
+    color: var(--ink);
+    line-height: 1.35;
+    margin: 0 0 22px;
+  }
+  .confirm-reminder {
+    display: flex;
+    align-items: flex-start;
+    gap: 10px;
+    background: #FFFBEB;
+    border: 1px solid rgba(251, 191, 36, 0.45);
+    border-radius: var(--radius-sm);
+    padding: 12px 14px;
+    text-align: left;
+    font-family: var(--font-body);
+    font-size: 13px;
+    color: #78350F;
+    line-height: 1.5;
+  }
+  .confirm-reminder-icon {
+    font-size: 15px;
+    flex-shrink: 0;
+    margin-top: 1px;
+    color: #D97706;
+  }
+  @media (prefers-reduced-motion: reduce) {
+    .confirm-overlay, .confirm-card { transition: none !important; }
+  }
+  @media (max-width: 520px) {
+    .confirm-card { padding: 40px 22px 28px; }
+    .confirm-title { font-size: 16px; }
+  }
 </style>
 </head>
 <body>
@@ -1051,6 +1214,18 @@
                      pattern="^[A-Z]{2,3}[0-9]{1,4}$" />
             </div>
             <div class="field-error" data-default="Use 2-3 letters + 1-4 digits (e.g. VB1234).">Use 2-3 letters + 1-4 digits (e.g. VB1234).</div>
+          </div>
+
+          <div class="field" id="f-departure">
+            <label for="departure">Departure airport
+              <span class="hint">— IATA code, e.g. MEX</span>
+            </label>
+            <div class="input-wrap" style="position: relative;">
+              <input id="departure" type="text" autocomplete="off" inputmode="text"
+                     placeholder="MEX" maxlength="3" />
+              <ul class="airport-suggestions" id="airportSuggestions" hidden></ul>
+            </div>
+            <div class="field-error" data-default="Please select a valid departure airport.">Please select a valid departure airport.</div>
           </div>
 
           <div class="field" id="f-fr">
@@ -1143,6 +1318,12 @@
             </span>
             No info from GH
           </button>
+          <button class="btn danger" id="btnWrongLoad" type="button" title="Log wrong load event">
+            <span class="ic" aria-hidden="true">
+              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round"><path d="M18 6L6 18"/><path d="M6 6l12 12"/></svg>
+            </span>
+            Wrong load
+          </button>
         </div>
       </div>
     </div>
@@ -1192,6 +1373,7 @@
             <th>Date / Time</th>
             <th>Pilot</th>
             <th>Flight</th>
+            <th>Departure</th>
             <th>FR (KG)</th>
             <th>FOB (KG)</th>
             <th>Total (KG)</th>
@@ -1216,8 +1398,24 @@
 
 <footer class="foot">
   <div><span class="stripe" aria-hidden="true"></span> Viva Aerobus · Fuel Operations · Internal operational document</div>
-  <div id="buildInfo">v1.0 · offline-ready</div>
+  <div id="buildInfo">v1.1 · offline-ready</div>
 </footer>
+
+<div class="confirm-overlay" id="confirmOverlay" aria-modal="true" role="dialog" aria-label="Upload confirmed" hidden>
+  <div class="confirm-card" id="confirmCard">
+    <button class="confirm-close" id="confirmClose" aria-label="Close">&times;</button>
+    <div class="confirm-icon" aria-hidden="true">
+      <svg viewBox="0 0 24 24" fill="currentColor" xmlns="http://www.w3.org/2000/svg">
+        <path d="M2 20h2a1 1 0 0 0 1-1v-8a1 1 0 0 0-1-1H2v10zm18.71-9.12A2 2 0 0 0 19 10h-5V6a3 3 0 0 0-3-3 1 1 0 0 0-.9.55L7 10H4v10h13.71a2 2 0 0 0 1.97-1.65l1.29-7a2 2 0 0 0-1.26-2.47z"/>
+      </svg>
+    </div>
+    <p class="confirm-title">Thank you for uploading fuel loading information — upload has been registered.</p>
+    <div class="confirm-reminder">
+      <span class="confirm-reminder-icon">&#9432;</span>
+      Reminder: first officers or captains should only register one upload per flight.
+    </div>
+  </div>
+</div>
 
 <div class="toast" id="toast" role="status" aria-live="polite">
   <span class="dot" aria-hidden="true"></span>
@@ -1261,6 +1459,8 @@
   const pilotHintEl    = $('pilotHint');
   const pilotHistoryEl = $('pilot-history');
   const flightEl  = $('flight');
+  const departureEl = $('departure');
+  const airportSuggestionsEl = $('airportSuggestions');
   const frEl      = $('fr');
   const fobEl     = $('fob');
   const densityEl = $('density');
@@ -1273,9 +1473,26 @@
 
   const btnSave     = $('btnSave');
   const btnNoInfo   = $('btnNoInfo');
+  const btnWrongLoad = $('btnWrongLoad');
   const btnDownload = $('btnDownload');
   const btnClear    = $('btnClear');
   const btnRefresh  = $('btnRefresh');
+
+  const confirmOverlayEl = $('confirmOverlay');
+  const confirmCloseEl   = $('confirmClose');
+
+  // Aeropuertos de salida válidos (IATA). Autocomplete del campo "Departure".
+  const DEPARTURE_AIRPORTS = [
+    'ACA','MEX','MTY','NLU','PVR','AUS','BFM','BJX','CJS','CUN','DFW','IAH',
+    'MID','SAT','TIJ','TLC','BOG','GDL','BQN','CEN','CUU','MZT','CMW','CTM',
+    'CUL','LAP','SJD','CVG','HAV','PBC','QRO','REX','SLW','TAM','TGZ','TRC',
+    'VER','VSA','CZM','DEN','DGO','HMO','LAS','LAX','OAK','ORD','PXM','HUX',
+    'JFK','LMM','MAM','MCO','OAX','MIA','MLM','MXL','SEA','SJO','SLP','TAP',
+    'TQO','ZCL','NLD','TPQ','ZIH','ROW'
+  ];
+  function getDeparture() {
+    return departureEl ? (departureEl.value || '').trim().toUpperCase() : '';
+  }
 
   const recordsBody = $('recordsBody');
   const emptyState  = $('emptyState');
@@ -1321,6 +1538,27 @@
     showToast._t = setTimeout(() => toastEl.classList.remove('show'), 2400);
   }
 
+  // ====================== Confirmation modal ======================
+  // Se muestra tras registrar un load (OK / No info / Wrong load) como feedback
+  // explícito de que el upload quedó guardado. Se cierra con la X, tap fuera,
+  // Escape o automáticamente a los 10 s.
+  function showConfirm() {
+    if (!confirmOverlayEl) return;
+    confirmOverlayEl.hidden = false;
+    void confirmOverlayEl.offsetWidth; // force reflow para que dispare la transición
+    confirmOverlayEl.classList.add('show');
+    clearTimeout(showConfirm._t);
+    showConfirm._t = setTimeout(hideConfirm, 10000);
+  }
+  function hideConfirm() {
+    if (!confirmOverlayEl) return;
+    clearTimeout(showConfirm._t);
+    confirmOverlayEl.classList.remove('show');
+    confirmOverlayEl.addEventListener('transitionend', () => {
+      confirmOverlayEl.hidden = true;
+    }, { once: true });
+  }
+
   function setError(fieldId, hasError, message) {
     const f = document.getElementById(fieldId);
     if (!f) return;
@@ -1335,7 +1573,7 @@
     }
   }
   function clearAllErrors() {
-    ['f-flight','f-fr','f-fob','f-density'].forEach(id => setError(id, false));
+    ['f-flight','f-departure','f-fr','f-fob','f-density'].forEach(id => setError(id, false));
   }
 
   // ====================== Pilot session ======================
@@ -1539,6 +1777,96 @@
     markIfInvalid('f-flight', (v) => FLIGHT_RE.test(v) ? null : 'Use 2-3 letters + 1-4 digits (e.g. VB1234).');
   });
 
+  // -------- Departure airport: autocomplete IATA (solo códigos válidos) --------
+  let acActiveIdx = -1;
+  function acHighlight(items, idx) {
+    items.forEach((li, i) => li.setAttribute('aria-selected', i === idx ? 'true' : 'false'));
+  }
+  function acOpen(matches) {
+    if (!airportSuggestionsEl) return;
+    const q = getDeparture();
+    airportSuggestionsEl.innerHTML = matches.map(code => {
+      const pos = code.indexOf(q);
+      if (q && pos !== -1) {
+        return '<li role="option">' + code.slice(0, pos) +
+          '<mark>' + code.slice(pos, pos + q.length) + '</mark>' +
+          code.slice(pos + q.length) + '</li>';
+      }
+      return '<li role="option">' + code + '</li>';
+    }).join('');
+    acActiveIdx = -1;
+    airportSuggestionsEl.hidden = matches.length === 0;
+    airportSuggestionsEl.querySelectorAll('li').forEach((li, idx) => {
+      li.addEventListener('mousedown', (e) => {
+        e.preventDefault();
+        departureEl.value = matches[idx];
+        airportSuggestionsEl.hidden = true;
+        acActiveIdx = -1;
+        setError('f-departure', false);
+        syncSubmitState();
+        frEl.focus();
+      });
+    });
+  }
+  function acClose() {
+    if (airportSuggestionsEl) airportSuggestionsEl.hidden = true;
+    acActiveIdx = -1;
+  }
+  if (departureEl) {
+    departureEl.addEventListener('input', () => {
+      const cleaned = departureEl.value.toUpperCase().replace(/[^A-Z]/g, '').slice(0, 3);
+      if (departureEl.value !== cleaned) departureEl.value = cleaned;
+      const q = cleaned;
+      setError('f-departure', false);
+      syncSubmitState();
+      if (!q) { acClose(); return; }
+      acOpen(DEPARTURE_AIRPORTS.filter(c => c.includes(q)));
+    });
+    departureEl.addEventListener('keydown', (e) => {
+      const items = airportSuggestionsEl
+        ? Array.from(airportSuggestionsEl.querySelectorAll('li')) : [];
+      if (!airportSuggestionsEl || airportSuggestionsEl.hidden || items.length === 0) {
+        if (e.key === 'Enter') { e.preventDefault(); frEl.focus(); }
+        return;
+      }
+      if (e.key === 'ArrowDown') {
+        e.preventDefault();
+        acActiveIdx = Math.min(acActiveIdx + 1, items.length - 1);
+        acHighlight(items, acActiveIdx);
+        if (items[acActiveIdx]) items[acActiveIdx].scrollIntoView({ block: 'nearest' });
+      } else if (e.key === 'ArrowUp') {
+        e.preventDefault();
+        acActiveIdx = Math.max(acActiveIdx - 1, 0);
+        acHighlight(items, acActiveIdx);
+        if (items[acActiveIdx]) items[acActiveIdx].scrollIntoView({ block: 'nearest' });
+      } else if (e.key === 'Enter') {
+        e.preventDefault();
+        if (acActiveIdx >= 0 && items[acActiveIdx]) {
+          departureEl.value = items[acActiveIdx].textContent.trim();
+          acClose();
+          setError('f-departure', false);
+          syncSubmitState();
+          frEl.focus();
+        } else {
+          acClose();
+          frEl.focus();
+        }
+      } else if (e.key === 'Escape') {
+        acClose();
+      }
+    });
+    departureEl.addEventListener('blur', () => {
+      setTimeout(acClose, 150);
+      markIfInvalid('f-departure', (v) =>
+        DEPARTURE_AIRPORTS.includes(v) ? null : 'Please select a valid departure airport.');
+      syncSubmitState();
+    });
+    departureEl.addEventListener('focus', () => {
+      const q = getDeparture();
+      if (q) acOpen(DEPARTURE_AIRPORTS.filter(c => c.includes(q)));
+    });
+  }
+
   // -------- FR / FOB: solo dígitos, formateo con coma de miles en blur ----
   function attachIntegerInput(el, fieldId) {
     el.addEventListener('input', () => {
@@ -1672,6 +2000,16 @@
       ok = false;
     }
 
+    // 2b) Departure airport (código IATA de la lista)
+    const departure = getDeparture();
+    if (!departure) {
+      setError('f-departure', true, 'Departure airport is required.');
+      ok = false;
+    } else if (!DEPARTURE_AIRPORTS.includes(departure)) {
+      setError('f-departure', true, 'Please select a valid departure airport.');
+      ok = false;
+    }
+
     // 3) FR (entero 0..99,999)
     if (!Number.isFinite(fr)) {
       setError('f-fr', true, 'FR is required (integer KG).');
@@ -1739,6 +2077,7 @@
     if (!validatePilotName(getPilotId()).ok) return false;
     const { flight, fr, fob, density } = readInputs();
     if (!flight || !FLIGHT_RE.test(flight)) return false;
+    if (!DEPARTURE_AIRPORTS.includes(getDeparture())) return false;
     if (!Number.isFinite(fr) || fr < INT_MIN || fr > INT_MAX) return false;
     if (!Number.isFinite(fob) || fob < INT_MIN || fob > INT_MAX) return false;
     if (fob <= fr) return false;
@@ -1760,6 +2099,11 @@
       btnSave.setAttribute('aria-disabled', String(!fullOk));
       btnSave.title = fullOk ? '' : 'Complete all fields with valid values to enable';
     }
+    if (btnWrongLoad) {
+      btnWrongLoad.disabled = !fullOk;
+      btnWrongLoad.setAttribute('aria-disabled', String(!fullOk));
+      btnWrongLoad.title = fullOk ? '' : 'Complete all fields with valid values to enable';
+    }
     if (btnNoInfo) {
       btnNoInfo.disabled = !minOk;
       btnNoInfo.setAttribute('aria-disabled', String(!minOk));
@@ -1771,6 +2115,7 @@
   function markIfInvalid(fieldId, isValidWhenNotEmpty) {
     const el = fieldId === 'f-pilot' ? pilotIdEl
              : fieldId === 'f-flight' ? flightEl
+             : fieldId === 'f-departure' ? departureEl
              : fieldId === 'f-fr' ? frEl
              : fieldId === 'f-fob' ? fobEl
              : densityEl;
@@ -1833,6 +2178,7 @@
       timestamp: r.iso || r.dateTime || '',
       pilot_id:  r.pilotId || '',
       flight:    r.flight || '',
+      departure_airport: r.departureAirport || '',
       fr_kg:     Number.isFinite(r.frKg)    ? r.frKg    : null,
       fob_kg:    Number.isFinite(r.fobKg)   ? r.fobKg   : null,
       total_kg:  Number.isFinite(r.totalKg) ? r.totalKg : null,
@@ -1880,6 +2226,7 @@
       timestamp: r.iso || r.dateTime || '',
       pilotId:   r.pilotId || '',
       flight:    r.flight || '',
+      departureAirport: r.departureAirport || '',
       frKg:      Number.isFinite(r.frKg)    ? r.frKg    : null,
       fobKg:     Number.isFinite(r.fobKg)   ? r.fobKg   : null,
       totalKg:   Number.isFinite(r.totalKg) ? r.totalKg : null,
@@ -2130,23 +2477,32 @@
 
     const rows = records.map(r => {
       const isOk = r.status === 'OK';
+      const isWrong = r.status === 'WRONG_LOAD';
+      const hasNums = isOk || isWrong;
       const isPending = cloudConfigured && r.synced === false;
-      const range = isOk
+      const range = hasNums
         ? (fmtL(r.lowL) + ' – ' + fmtL(r.highL))
         : '—';
-      const pill = isOk
-        ? '<span class="pill ok"><span class="d"></span>OK</span>'
-        : '<span class="pill no-info"><span class="d"></span>No GH info</span>';
+      let pill;
+      if (isOk) {
+        pill = '<span class="pill ok"><span class="d"></span>OK</span>';
+      } else if (isWrong) {
+        pill = '<span class="pill wrong-load"><span class="d"></span>Wrong load</span>';
+      } else {
+        pill = '<span class="pill no-info"><span class="d"></span>No GH info</span>';
+      }
       const trClass = isPending ? ' class="row-pending" title="Pending cloud sync"' : '';
       const pilotCell = r.pilotId ? escapeHtml(r.pilotId) : '<span style="color: var(--line-strong)">—</span>';
+      const depCell = r.departureAirport ? escapeHtml(r.departureAirport) : '<span style="color: var(--line-strong)">—</span>';
       return '<tr' + trClass + '>' +
         '<td>' + escapeHtml(r.dateTime) + '</td>' +
         '<td class="flight">' + pilotCell + '</td>' +
         '<td class="flight">' + escapeHtml(r.flight) + '</td>' +
-        '<td>' + (isOk ? fmtInt(r.frKg) : '—') + '</td>' +
-        '<td>' + (isOk ? fmtInt(r.fobKg) : '—') + '</td>' +
-        '<td>' + (isOk ? fmtInt(r.totalKg) : '—') + '</td>' +
-        '<td>' + (isOk ? fmtDensity(r.density) : '—') + '</td>' +
+        '<td class="flight">' + depCell + '</td>' +
+        '<td>' + (hasNums ? fmtInt(r.frKg) : '—') + '</td>' +
+        '<td>' + (hasNums ? fmtInt(r.fobKg) : '—') + '</td>' +
+        '<td>' + (hasNums ? fmtInt(r.totalKg) : '—') + '</td>' +
+        '<td>' + (hasNums ? fmtDensity(r.density) : '—') + '</td>' +
         '<td class="range">' + range + '</td>' +
         '<td>' + pill + '</td>' +
       '</tr>';
@@ -2172,6 +2528,7 @@
       iso: fmtISO(now),
       pilotId: getPilotId(),
       flight: flight,
+      departureAirport: getDeparture(),
       frKg: fr,
       fobKg: fob,
       totalKg: c.totalKg,
@@ -2184,6 +2541,41 @@
     rememberPilotId();
     showToast('Load logged · ' + flight);
     await addRecord(record);
+    showConfirm();
+  }
+
+  // Mismo flujo que handleSave pero registra el evento como carga incorrecta.
+  async function handleWrongLoad() {
+    if (!validateForSave()) {
+      const reason = !validatePilotName(getPilotId()).ok ? 'Enter your full name' : 'Please review the form';
+      showToast(reason, 'warn');
+      if (!validatePilotName(getPilotId()).ok && pilotIdEl) pilotIdEl.focus();
+      return;
+    }
+    const { flight, fr, fob, density } = readInputs();
+    const c = compute({ fr, fob, density });
+    if (!c) { showToast('Cannot calculate', 'warn'); return; }
+    const now = new Date();
+    const record = {
+      id: now.getTime(),
+      dateTime: fmtDateTime(now),
+      iso: fmtISO(now),
+      pilotId: getPilotId(),
+      flight: flight,
+      departureAirport: getDeparture(),
+      frKg: fr,
+      fobKg: fob,
+      totalKg: c.totalKg,
+      density: density,
+      totalL: c.totalL,
+      lowL: c.low,
+      highL: c.high,
+      status: 'WRONG_LOAD'
+    };
+    rememberPilotId();
+    showToast('Wrong load logged · ' + flight, 'warn');
+    await addRecord(record);
+    showConfirm();
   }
 
   async function handleNoInfo() {
@@ -2201,6 +2593,7 @@
       iso: fmtISO(now),
       pilotId: getPilotId(),
       flight: flight,
+      departureAirport: getDeparture(),
       frKg: Number.isFinite(fr) ? fr : null,
       fobKg: Number.isFinite(fob) ? fob : null,
       totalKg: null,
@@ -2213,6 +2606,7 @@
     rememberPilotId();
     showToast('Incident logged · ' + flight, 'warn');
     await addRecord(record);
+    showConfirm();
   }
 
   // ====================== CSV ======================
@@ -2224,16 +2618,21 @@
   }
   function buildCsv(records) {
     const headers = [
-      'Date/Time', 'ISO', 'Pilot ID', 'Flight', 'FR (KG)', 'FOB (KG)', 'Total (KG)',
+      'Date/Time', 'ISO', 'Pilot ID', 'Flight', 'Departure Airport', 'FR (KG)', 'FOB (KG)', 'Total (KG)',
       'Density (kg/L)', 'Total (L)', 'Low (L)', 'High (L)', 'Status'
     ];
     const lines = [headers.join(';')];
     records.forEach(r => {
+      let statusLabel;
+      if (r.status === 'OK') statusLabel = 'OK';
+      else if (r.status === 'WRONG_LOAD') statusLabel = 'Wrong load';
+      else statusLabel = 'No ground handler info';
       lines.push([
         r.dateTime,
         r.iso,
         r.pilotId || '',
         r.flight,
+        r.departureAirport || '',
         r.frKg != null ? r.frKg : '',
         r.fobKg != null ? r.fobKg : '',
         r.totalKg != null ? r.totalKg : '',
@@ -2241,7 +2640,7 @@
         r.totalL != null ? r.totalL.toFixed(2) : '',
         r.lowL  != null ? r.lowL.toFixed(2)  : '',
         r.highL != null ? r.highL.toFixed(2) : '',
-        r.status === 'OK' ? 'OK' : 'No ground handler info'
+        statusLabel
       ].map(csvEscape).join(';'));
     });
     return lines.join('\r\n');
@@ -2295,9 +2694,21 @@
   // ====================== Boot ======================
   btnSave.addEventListener('click', handleSave);
   btnNoInfo.addEventListener('click', handleNoInfo);
+  if (btnWrongLoad) btnWrongLoad.addEventListener('click', handleWrongLoad);
   btnDownload.addEventListener('click', handleDownload);
   btnClear.addEventListener('click', handleClear);
   if (btnRefresh) btnRefresh.addEventListener('click', handleRefresh);
+
+  // Cierre del modal de confirmación: botón X, tap en el backdrop, Escape.
+  if (confirmCloseEl) confirmCloseEl.addEventListener('click', hideConfirm);
+  if (confirmOverlayEl) {
+    confirmOverlayEl.addEventListener('click', (e) => {
+      if (e.target === confirmOverlayEl) hideConfirm();
+    });
+  }
+  document.addEventListener('keydown', (e) => {
+    if (e.key === 'Escape' && confirmOverlayEl && !confirmOverlayEl.hidden) hideConfirm();
+  });
 
   if (pilotIdEl) {
     pilotIdEl.addEventListener('keydown', (e) => {
@@ -2305,7 +2716,7 @@
     });
   }
   flightEl.addEventListener('keydown', (e) => {
-    if (e.key === 'Enter') { e.preventDefault(); frEl.focus(); }
+    if (e.key === 'Enter') { e.preventDefault(); if (departureEl) departureEl.focus(); else frEl.focus(); }
   });
   frEl.addEventListener('keydown', (e) => {
     if (e.key === 'Enter') { e.preventDefault(); densityEl.focus(); }
