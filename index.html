@@ -1155,6 +1155,33 @@
     .confirm-card { padding: 40px 22px 28px; }
     .confirm-title { font-size: 16px; }
   }
+
+  /* ======================== REQUIRED FIELD MARKERS ======================== */
+  .req {
+    color: #DC2626;
+    font-weight: 800;
+    margin-left: 3px;
+  }
+  .action-hint {
+    margin-top: 12px;
+    display: flex;
+    align-items: flex-start;
+    gap: 7px;
+    font-size: 12.5px;
+    line-height: 1.45;
+    font-weight: 600;
+    color: var(--viva-magenta-dark);
+    background: var(--viva-magenta-soft);
+    border: 1px solid rgba(191, 0, 112, 0.22);
+    border-radius: var(--radius-sm);
+    padding: 9px 12px;
+  }
+  .action-hint[hidden] { display: none !important; }
+  .action-hint .ah-ic {
+    flex-shrink: 0;
+    font-weight: 800;
+    line-height: 1.2;
+  }
 </style>
 </head>
 <body>
@@ -1194,7 +1221,7 @@
     <div class="card calc-card" style="margin-top: 18px;">
       <div class="calc-inputs">
         <div class="pilot-session" id="pilotSession">
-          <span class="pilot-label">Pilot Name</span>
+          <span class="pilot-label">Pilot Name <span class="req" aria-hidden="true">*</span></span>
           <input id="pilotId" type="text" placeholder="Full name (e.g. Name Surname)"
                  list="pilot-history" autocomplete="name" autocapitalize="words"
                  spellcheck="false" minlength="2" maxlength="40"
@@ -1205,7 +1232,7 @@
         <div class="section-tag">Flight data</div>
         <div class="input-grid">
           <div class="field full" id="f-flight">
-            <label for="flight">Flight number
+            <label for="flight">Flight number <span class="req" aria-hidden="true">*</span>
               <span class="hint">— 2-3 letters + 1-4 digits, e.g. VB1234</span>
             </label>
             <div class="input-wrap">
@@ -1217,7 +1244,7 @@
           </div>
 
           <div class="field" id="f-departure">
-            <label for="departure">Departure airport
+            <label for="departure">Departure airport <span class="req" aria-hidden="true">*</span>
               <span class="hint">— IATA code, e.g. MEX</span>
             </label>
             <div class="input-wrap" style="position: relative;">
@@ -1229,7 +1256,7 @@
           </div>
 
           <div class="field" id="f-fr">
-            <label for="fr">FR — Fuel Remaining
+            <label for="fr">FR — Fuel Remaining <span class="req" aria-hidden="true">*</span>
               <span class="hint">— integer, max 99,999</span>
             </label>
             <div class="input-wrap">
@@ -1242,7 +1269,7 @@
           </div>
 
           <div class="field" id="f-density">
-            <label for="density">Density
+            <label for="density">Density <span class="req" aria-hidden="true">*</span>
               <span class="hint">— from ground handler · 0.770–0.840</span>
             </label>
             <div class="input-wrap">
@@ -1254,7 +1281,7 @@
           </div>
 
           <div class="field" id="f-fob">
-            <label for="fob">FOB — Fuel On Board
+            <label for="fob">FOB — Fuel On Board <span class="req" aria-hidden="true">*</span>
               <span class="hint">— integer, max 99,999 · ≥ FR</span>
             </label>
             <div class="input-wrap">
@@ -1325,6 +1352,10 @@
             Wrong load
           </button>
         </div>
+        <p class="action-hint" id="actionHint" hidden>
+          <span class="ah-ic" aria-hidden="true">!</span>
+          <span id="actionHintText"></span>
+        </p>
       </div>
     </div>
   </section>
@@ -1398,7 +1429,7 @@
 
 <footer class="foot">
   <div><span class="stripe" aria-hidden="true"></span> Viva Aerobus · Fuel Operations · Internal operational document</div>
-  <div id="buildInfo">v1.3 · offline-ready</div>
+  <div id="buildInfo">v1.4 · offline-ready</div>
 </footer>
 
 <div class="confirm-overlay" id="confirmOverlay" aria-modal="true" role="dialog" aria-label="Upload confirmed" hidden>
@@ -1480,6 +1511,8 @@
 
   const confirmOverlayEl = $('confirmOverlay');
   const confirmCloseEl   = $('confirmClose');
+  const actionHintEl     = $('actionHint');
+  const actionHintTextEl = $('actionHintText');
 
   // Aeropuertos de salida válidos (IATA). Autocomplete del campo "Departure".
   const DEPARTURE_AIRPORTS = [
@@ -2101,6 +2134,40 @@
     if (!flight || !FLIGHT_RE.test(flight)) return false;
     return DEPARTURE_AIRPORTS.includes(getDeparture());
   }
+  // Lista legible de los campos que faltan para registrar una carga (Log/Wrong load).
+  function missingForSave() {
+    const miss = [];
+    if (!validatePilotName(getPilotId()).ok) miss.push('pilot name');
+    const { flight, fr, fob, density } = readInputs();
+    if (!flight || !FLIGHT_RE.test(flight)) miss.push('flight number');
+    if (!DEPARTURE_AIRPORTS.includes(getDeparture())) miss.push('departure airport');
+    if (!Number.isFinite(fr) || fr < INT_MIN || fr > INT_MAX) miss.push('FR');
+    const densityRaw = (densityEl.value || '').trim();
+    if (!densityRaw || !DENSITY_RE.test(densityRaw) || !Number.isFinite(density)
+        || density < DENSITY_MIN || density > DENSITY_MAX) miss.push('density');
+    if (!Number.isFinite(fob) || fob < INT_MIN || fob > INT_MAX) miss.push('FOB');
+    else if (Number.isFinite(fr) && fob <= fr) miss.push('FOB ≥ FR');
+    return miss;
+  }
+  // Resalta proactivamente el campo Departure (rojo + mensaje) cuando el piloto
+  // ya empezó a completar el formulario pero dejó el aeropuerto vacío/ inválido.
+  // No molesta mientras el campo está enfocado ni en un formulario totalmente vacío.
+  function reflectDepartureRequirement() {
+    if (!departureEl) return;
+    if (document.activeElement === departureEl) return;
+    const dep = getDeparture();
+    if (DEPARTURE_AIRPORTS.includes(dep)) { setError('f-departure', false); return; }
+    const { flight, fr, fob } = readInputs();
+    const started = !!validatePilotName(getPilotId()).ok
+      || !!flight
+      || Number.isFinite(fr) || Number.isFinite(fob)
+      || !!(densityEl.value || '').trim();
+    if (started) {
+      setError('f-departure', true, dep
+        ? 'Please select a valid departure airport.'
+        : 'Departure airport is required.');
+    }
+  }
   function syncSubmitState() {
     const fullOk = isFormFullyValid();
     const minOk  = isMinFormValidForNoInfo();
@@ -2122,6 +2189,18 @@
       btnNoInfo.disabled = false;
       btnNoInfo.removeAttribute('aria-disabled');
       btnNoInfo.title = minOk ? '' : 'Requires pilot name, flight number and departure airport';
+    }
+    // Resalta el aeropuerto faltante y muestra qué falta junto a los botones.
+    reflectDepartureRequirement();
+    if (actionHintEl && actionHintTextEl) {
+      const miss = missingForSave();
+      if (miss.length) {
+        actionHintTextEl.textContent = 'To log a load, complete: ' + miss.join(', ') + '.';
+        actionHintEl.hidden = false;
+      } else {
+        actionHintEl.hidden = true;
+        actionHintTextEl.textContent = '';
+      }
     }
   }
   // Marca error en un campo solo si su valor actual es inválido (no si está
