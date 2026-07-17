@@ -1429,7 +1429,7 @@
 
 <footer class="foot">
   <div><span class="stripe" aria-hidden="true"></span> Viva Aerobus · Fuel Operations · Internal operational document</div>
-  <div id="buildInfo">v1.4 · offline-ready</div>
+  <div id="buildInfo">v1.5 · offline-ready</div>
 </footer>
 
 <div class="confirm-overlay" id="confirmOverlay" aria-modal="true" role="dialog" aria-label="Upload confirmed" hidden>
@@ -1768,7 +1768,10 @@
     if (!valid) return null;
     const totalKg = fob - fr;
     const totalL  = (totalKg + KG_TOLERANCE) / density;
-    const low     = totalL * (1 - DISCREPANCY_PCT);
+    // Low: sobre los litros puros (sin buffer +200) para no marcar falsos
+    // faltantes cuando la carga difiere menos que el buffer. High se mantiene
+    // con el buffer +200 para seguir detectando sobre-entregas (robo).
+    const low     = (totalKg / density) * (1 - DISCREPANCY_PCT);
     const high    = totalL * (1 + DISCREPANCY_PCT);
     return { totalKg, totalL, low, high };
   }
