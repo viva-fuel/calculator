@@ -1182,6 +1182,57 @@
     font-weight: 800;
     line-height: 1.2;
   }
+
+  /* ======================== NO-INFO REASON POPUP ======================== */
+  .reason-icon {
+    background: var(--viva-magenta-soft);
+    border-color: rgba(191, 0, 112, 0.25);
+  }
+  .reason-icon svg { color: var(--viva-magenta); }
+  .reason-subtitle {
+    font-family: var(--font-body);
+    font-size: 13.5px;
+    color: var(--muted);
+    line-height: 1.5;
+    margin: -8px 0 22px;
+  }
+  .reason-actions {
+    display: flex;
+    flex-direction: column;
+    gap: 12px;
+    margin-top: 4px;
+  }
+  .reason-btn {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    gap: 10px;
+    width: 100%;
+    padding: 15px 18px;
+    border-radius: var(--radius-sm);
+    border: 1.5px solid var(--line);
+    background: var(--surface-alt);
+    color: var(--ink);
+    font-family: var(--font-body);
+    font-size: 15px;
+    font-weight: 700;
+    letter-spacing: 0.01em;
+    cursor: pointer;
+    transition: background 130ms ease, border-color 130ms ease, transform 80ms ease;
+  }
+  .reason-btn:hover {
+    background: var(--viva-magenta-soft);
+    border-color: var(--viva-magenta);
+    color: var(--viva-magenta-dark);
+  }
+  .reason-btn:active { transform: scale(0.98); }
+  .reason-timeout {
+    margin-top: 20px;
+    font-family: var(--font-body);
+    font-size: 12px;
+    color: var(--muted);
+    line-height: 1.4;
+  }
 </style>
 </head>
 <body>
@@ -1429,7 +1480,7 @@
 
 <footer class="foot">
   <div><span class="stripe" aria-hidden="true"></span> Viva Aerobus · Fuel Operations · Internal operational document</div>
-  <div id="buildInfo">v1.5 · offline-ready</div>
+  <div id="buildInfo">v1.6 · offline-ready</div>
 </footer>
 
 <div class="confirm-overlay" id="confirmOverlay" aria-modal="true" role="dialog" aria-label="Upload confirmed" hidden>
@@ -1445,6 +1496,25 @@
       <span class="confirm-reminder-icon">&#9432;</span>
       Reminder: first officers or captains should only register one upload per flight.
     </div>
+  </div>
+</div>
+
+<div class="confirm-overlay" id="reasonOverlay" aria-modal="true" role="dialog" aria-label="No info reason" hidden>
+  <div class="confirm-card" id="reasonCard">
+    <button class="confirm-close" id="reasonClose" aria-label="Close">&times;</button>
+    <div class="confirm-icon reason-icon" aria-hidden="true">
+      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round">
+        <circle cx="12" cy="12" r="9"/><path d="M12 8v5"/><path d="M12 16.2v.05"/>
+      </svg>
+    </div>
+    <p class="confirm-title">Why is there no info from the ground handler?</p>
+    <p class="reason-subtitle">Select a reason to log this incident.</p>
+    <div class="reason-actions">
+      <button class="reason-btn" type="button" data-reason="RO not connected">RO not connected</button>
+      <button class="reason-btn" type="button" data-reason="No available information">No available information</button>
+      <button class="reason-btn" type="button" data-reason="Other">Other</button>
+    </div>
+    <p class="reason-timeout">If no reason is selected within 3 minutes, the incident is logged as “No info from GH”.</p>
   </div>
 </div>
 
@@ -1513,6 +1583,8 @@
   const confirmCloseEl   = $('confirmClose');
   const actionHintEl     = $('actionHint');
   const actionHintTextEl = $('actionHintText');
+  const reasonOverlayEl  = $('reasonOverlay');
+  const reasonCloseEl    = $('reasonClose');
 
   // Aeropuertos de salida válidos (IATA). Autocomplete del campo "Departure".
   const DEPARTURE_AIRPORTS = [
@@ -1589,6 +1661,34 @@
     confirmOverlayEl.classList.remove('show');
     confirmOverlayEl.addEventListener('transitionend', () => {
       confirmOverlayEl.hidden = true;
+    }, { once: true });
+  }
+
+  // ---- Popup de motivos para "No info from GH" ----
+  // Al apretar "No info from GH" (con los campos válidos) se abre este popup con
+  // 3 motivos. Si el piloto elige uno, se registra el incidente con ese motivo.
+  // Si no toca nada en 3 minutos, se cierra solo y registra el incidente SIN
+  // motivo (queda como "No info from GH", igual que antes). Cerrar con la X /
+  // Escape / tap afuera cancela sin registrar (para deshacer un toque por error).
+  const NO_INFO_REASON_TIMEOUT_MS = 3 * 60 * 1000; // 3 minutos
+  function showReasonPopup() {
+    if (!reasonOverlayEl) { logNoInfo(null); return; }
+    reasonOverlayEl.hidden = false;
+    void reasonOverlayEl.offsetWidth;
+    reasonOverlayEl.classList.add('show');
+    clearTimeout(showReasonPopup._t);
+    // Timeout: pasa el tiempo sin selección -> registra sin motivo.
+    showReasonPopup._t = setTimeout(() => {
+      hideReasonPopup();
+      logNoInfo(null);
+    }, NO_INFO_REASON_TIMEOUT_MS);
+  }
+  function hideReasonPopup() {
+    if (!reasonOverlayEl) return;
+    clearTimeout(showReasonPopup._t);
+    reasonOverlayEl.classList.remove('show');
+    reasonOverlayEl.addEventListener('transitionend', () => {
+      reasonOverlayEl.hidden = true;
     }, { once: true });
   }
 
@@ -2268,8 +2368,13 @@
   }
 
   // --- Supabase wire (Postgres usa snake_case, el frontend camelCase) ---
+  // Si Supabase todavía no tiene la columna no_info_reason, este flag se enciende
+  // (en memoria, por sesión) tras el primer INSERT que la rechace, para no volver
+  // a mandarla. Se resetea al recargar, así se auto-recupera cuando la agreguen.
+  let supaReasonColMissing = false;
+
   function toSupabaseWire(r) {
-    return {
+    const wire = {
       id:        String(r.id || ''),
       timestamp: r.iso || r.dateTime || '',
       pilot_id:  r.pilotId || '',
@@ -2285,6 +2390,12 @@
       status:    r.status || 'OK',
       device:    (typeof navigator !== 'undefined' && navigator.platform) || ''
     };
+    // Solo agregamos el motivo cuando existe (registros "No info" con motivo).
+    // Los demás registros viajan idénticos a antes -> cero riesgo.
+    if (!supaReasonColMissing && r.noInfoReason) {
+      wire.no_info_reason = r.noInfoReason;
+    }
+    return wire;
   }
 
   function supabaseAuthHeaders() {
@@ -2300,15 +2411,25 @@
   async function supabasePushRecord(record) {
     const wire = toSupabaseWire(record);
     if (!wire.id) throw new Error('Record without id');
-    const r = await fetch(SUPABASE_URL + '/rest/v1/' + SUPABASE_TABLE, {
+    const doPost = (body) => fetch(SUPABASE_URL + '/rest/v1/' + SUPABASE_TABLE, {
       method: 'POST',
       headers: Object.assign({
         'Content-Type': 'application/json',
         'Prefer':       'resolution=ignore-duplicates,return=minimal'
       }, supabaseAuthHeaders()),
-      body: JSON.stringify(wire),
+      body: JSON.stringify(body),
       cache: 'no-store'
     });
+    let r = await doPost(wire);
+    // Resiliencia: si la columna no_info_reason todavía no existe en Supabase,
+    // el INSERT devuelve 400. En ese caso reintentamos SIN el motivo para que el
+    // registro igual se guarde (nunca se pierde ni se cae el logueo). El motivo
+    // queda en localStorage/CSV y empezará a persistir apenas agreguen la columna.
+    if (!r.ok && r.status === 400 && 'no_info_reason' in wire) {
+      supaReasonColMissing = true;
+      delete wire.no_info_reason;
+      r = await doPost(wire);
+    }
     if (!r.ok) throw new Error('Supabase POST ' + r.status);
     return true;
   }
@@ -2331,6 +2452,7 @@
       lowL:      Number.isFinite(r.lowL)    ? r.lowL    : null,
       highL:     Number.isFinite(r.highL)   ? r.highL   : null,
       status:    r.status || '',
+      noInfoReason: r.noInfoReason || null,
       device:    (typeof navigator !== 'undefined' && navigator.platform) || ''
     };
   }
@@ -2701,6 +2823,14 @@
       focusFirstMissingNoInfo();
       return;
     }
+    // Campos válidos: abrimos el popup de motivos. El registro se crea recién
+    // cuando el piloto elige un motivo o cuando vencen los 3 minutos.
+    showReasonPopup();
+  }
+
+  // Registra el incidente "No info from GH". reason = motivo elegido, o null
+  // (null => se registra sin motivo, exactamente como antes).
+  async function logNoInfo(reason) {
     const { flight, fr, fob, density } = readInputs();
     const now = new Date();
     const record = {
@@ -2717,7 +2847,8 @@
       totalL: null,
       lowL: null,
       highL: null,
-      status: 'NO_INFO'
+      status: 'NO_INFO',
+      noInfoReason: reason || null
     };
     rememberPilotId();
     showToast('Incident logged · ' + flight, 'warn');
@@ -2735,7 +2866,7 @@
   function buildCsv(records) {
     const headers = [
       'Date/Time', 'ISO', 'Pilot ID', 'Flight', 'Departure Airport', 'FR (KG)', 'FOB (KG)', 'Total (KG)',
-      'Density (kg/L)', 'Total (L)', 'Low (L)', 'High (L)', 'Status'
+      'Density (kg/L)', 'Total (L)', 'Low (L)', 'High (L)', 'Status', 'No-info Reason'
     ];
     const lines = [headers.join(';')];
     records.forEach(r => {
@@ -2756,7 +2887,8 @@
         r.totalL != null ? r.totalL.toFixed(2) : '',
         r.lowL  != null ? r.lowL.toFixed(2)  : '',
         r.highL != null ? r.highL.toFixed(2) : '',
-        statusLabel
+        statusLabel,
+        r.noInfoReason || ''
       ].map(csvEscape).join(';'));
     });
     return lines.join('\r\n');
@@ -2824,6 +2956,25 @@
   }
   document.addEventListener('keydown', (e) => {
     if (e.key === 'Escape' && confirmOverlayEl && !confirmOverlayEl.hidden) hideConfirm();
+  });
+
+  // Popup de motivos: elegir un motivo registra el incidente con ese motivo.
+  // La X / tap afuera / Escape cancelan sin registrar (deshacer toque por error).
+  if (reasonOverlayEl) {
+    reasonOverlayEl.querySelectorAll('.reason-btn').forEach((btn) => {
+      btn.addEventListener('click', () => {
+        const reason = btn.getAttribute('data-reason') || null;
+        hideReasonPopup();
+        logNoInfo(reason);
+      });
+    });
+    reasonOverlayEl.addEventListener('click', (e) => {
+      if (e.target === reasonOverlayEl) hideReasonPopup();
+    });
+  }
+  if (reasonCloseEl) reasonCloseEl.addEventListener('click', hideReasonPopup);
+  document.addEventListener('keydown', (e) => {
+    if (e.key === 'Escape' && reasonOverlayEl && !reasonOverlayEl.hidden) hideReasonPopup();
   });
 
   if (pilotIdEl) {
