@@ -821,6 +821,7 @@
               <th>Total (L)</th>
               <th>Range (L)</th>
               <th>Status</th>
+              <th>No-info Reason</th>
             </tr>
           </thead>
           <tbody id="recordsBody"></tbody>
@@ -1093,6 +1094,7 @@
       lowL:      row.low_l   != null ? Number(row.low_l)   : null,
       highL:     row.high_l  != null ? Number(row.high_l)  : null,
       status:    row.status,
+      noInfoReason: row.no_info_reason || '',
       device:    row.device
     };
   }
@@ -1463,7 +1465,8 @@
           (r.flight || '')  + ' ' +
           (r.departureAirport || '') + ' ' +
           (r.timestamp || '') + ' ' +
-          (r.status || '')
+          (r.status || '') + ' ' +
+          (r.noInfoReason || '')
         ).toLowerCase();
         if (blob.indexOf(q) === -1) return false;
       }
@@ -1523,6 +1526,7 @@
         '<td>' + (Number.isFinite(r.totalL)  ? fmtL(r.totalL)    : '—') + '</td>' +
         '<td class="range">' + range + '</td>' +
         '<td>' + pill + '</td>' +
+        '<td>' + escapeHtml(r.noInfoReason || '—') + '</td>' +
       '</tr>';
     }).join('');
     recordsBodyEl.innerHTML = rows;
@@ -1538,7 +1542,7 @@
   function buildCsv(arr) {
     const headers = [
       'Date/Time', 'ISO', 'Pilot ID', 'Flight', 'Departure Airport', 'FR (KG)', 'FOB (KG)', 'Total (KG)',
-      'Density (kg/L)', 'Total (L)', 'Low (L)', 'High (L)', 'Status'
+      'Density (kg/L)', 'Total (L)', 'Low (L)', 'High (L)', 'Status', 'No-info Reason'
     ];
     const lines = [headers.join(';')];
     arr.forEach(r => {
@@ -1559,7 +1563,8 @@
         Number.isFinite(r.totalL) ? r.totalL.toFixed(2) : '',
         Number.isFinite(r.lowL) ? r.lowL.toFixed(2) : '',
         Number.isFinite(r.highL) ? r.highL.toFixed(2) : '',
-        statusLabel
+        statusLabel,
+        r.noInfoReason || ''
       ].map(csvEscape).join(';'));
     });
     return lines.join('\r\n');
@@ -1600,7 +1605,8 @@
       'Total (L)':   Number.isFinite(r.totalL) ? Number(r.totalL.toFixed(2)) : '',
       'Low (L)':     Number.isFinite(r.lowL) ? Number(r.lowL.toFixed(2)) : '',
       'High (L)':    Number.isFinite(r.highL) ? Number(r.highL.toFixed(2)) : '',
-      'Status':      (r.status === 'OK' ? 'OK' : (r.status === 'WRONG_LOAD' ? 'Wrong load' : 'No ground handler info'))
+      'Status':      (r.status === 'OK' ? 'OK' : (r.status === 'WRONG_LOAD' ? 'Wrong load' : 'No ground handler info')),
+      'No-info Reason': r.noInfoReason || ''
     }));
   }
   function handleDownloadXlsx() {
