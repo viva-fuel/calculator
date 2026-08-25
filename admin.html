@@ -940,6 +940,8 @@
   // transferencia de Supabase. Ahora la carga inicial es acotada y el refresh
   // automático pide únicamente los registros nuevos (payload ~0).
   const DEFAULT_WINDOW_DAYS = 30;
+  // Tope de registros que guardamos en el caché local (fallback si el backend cae).
+  const CACHE_MAX_RECORDS = 5000;
   const JSONBIN_BASE = 'https://api.jsonbin.io/v3/b/';
   // Static fallback hosted on the same GitHub Pages site. Updated manually
   // by committing to the repo when both Supabase and JSONBin are unreachable.
@@ -1286,8 +1288,11 @@
   // instead of an empty table.
   function cacheRecords(arr) {
     try {
+      // Recortamos a los más recientes: localStorage ronda los 5 MB y guardar
+      // la historia entera hacía fallar el guardado en silencio, dejando el
+      // fallback desactualizado justo cuando más hace falta.
       localStorage.setItem(RECORDS_CACHE_KEY, JSON.stringify({
-        records: arr,
+        records: arr.slice(0, CACHE_MAX_RECORDS),
         cachedAt: new Date().toISOString()
       }));
     } catch (e) { /* quota or private mode, non-fatal */ }
@@ -1403,9 +1408,12 @@
       //  - Refresh siguiente: SOLO los registros nuevos desde el último que
       //    ya tenemos. Si no hay nada nuevo, la respuesta es un array vacío.
       const newest = newestLoadedIso();
+      let changed = true;
       if (allRecords.length > 0 && newest) {
         const fresh = await fetchAll({ newerThan: newest });
+        const before = allRecords.length;
         allRecords = mergeRecords(allRecords, fresh);
+        changed = allRecords.length !== before;
         if (!silent) {
           showToast(fresh.length > 0
             ? fresh.length + ' new record' + (fresh.length === 1 ? '' : 's')
@@ -1417,12 +1425,16 @@
         allRecords = sortByTimestampDesc(arr);
         if (!silent) showToast('Loaded · ' + allRecords.length + ' record' + (allRecords.length === 1 ? '' : 's'));
       }
-      cacheRecords(allRecords);
       currentSource  = 'live';
       lastFetchAt    = new Date().toISOString();
       lastErrorInfo  = null;
-      rebuildPilotFilter();
-      render();
+      // Si el refresh no trajo nada nuevo (el caso normal), evitamos volver a
+      // dibujar miles de filas y a serializar el caché: era CPU tirada cada 30 s.
+      if (changed) {
+        cacheRecords(allRecords);
+        rebuildPilotFilter();
+        render();
+      }
       applySourceUi();
     } catch (e) {
       lastErrorInfo = { status: e.status || 0, message: e.message || 'Unknown error' };
