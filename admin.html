@@ -1233,6 +1233,11 @@
       const body = await r.json();
       if (!Array.isArray(body) || body.length === 0) break;
       body.forEach((row) => { if (row && row.id != null) byId.set(String(row.id), row); });
+      // Avisamos página por página para poder pintar la primera enseguida en vez
+      // de esperar a que terminen de bajar todas.
+      if (typeof opts.onPage === 'function') {
+        try { opts.onPage(body.map(fromSupabaseWire)); } catch (_) {}
+      }
       if (body.length < PAGE) break;
       offset += PAGE;
     }
@@ -1421,7 +1426,20 @@
         }
       } else {
         loadedSinceIso = fullHistoryLoaded ? null : windowStartIso(DEFAULT_WINDOW_DAYS);
-        const arr = await fetchAll(loadedSinceIso ? { since: loadedSinceIso } : {});
+        // Pintamos la primera página apenas llega (los registros más nuevos, que
+        // son los que se miran) y el resto se sigue cargando por detrás.
+        let painted = false;
+        const opts = loadedSinceIso ? { since: loadedSinceIso } : {};
+        opts.onPage = (rows) => {
+          if (painted) return;
+          painted = true;
+          allRecords = sortByTimestampDesc(rows);
+          currentSource = 'live';
+          rebuildPilotFilter();
+          render();
+          applySourceUi();
+        };
+        const arr = await fetchAll(opts);
         allRecords = sortByTimestampDesc(arr);
         if (!silent) showToast('Loaded · ' + allRecords.length + ' record' + (allRecords.length === 1 ? '' : 's'));
       }
