@@ -749,6 +749,10 @@
           <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><polyline points="23 4 23 10 17 10"/><polyline points="1 20 1 14 7 14"/><path d="M20.49 9A9 9 0 0 0 5.64 5.64L1 10m22 4-4.64 4.36A9 9 0 0 1 3.51 15"/></svg>
           Refresh
         </button>
+        <button class="btn ghost" id="btnLoadAll" type="button" title="Download the complete history from the cloud (heavier: only when you need older months)">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><path d="M3 12a9 9 0 1 0 9-9"/><polyline points="3 3 3 9 9 9"/></svg>
+          Full history
+        </button>
         <button class="btn primary" id="btnDownloadXlsx" type="button" title="Download as Excel (.xlsx)">
           <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><polyline points="14 2 14 8 20 8"/><path d="M8 13l3 3 5-5" /></svg>
           Download Excel
@@ -860,6 +864,11 @@
   const STORAGE_KEY = 'viva_fuel_admin_creds';
   const RECORDS_CACHE_KEY = 'viva_fuel_admin_records_cache';
   const AUTO_REFRESH_MS = 30000;
+  // Ventana por defecto: solo bajamos los últimos N días. Antes se descargaba
+  // TODA la historia (13k+ registros, ~4 MB) cada 30 s, lo que agotó la cuota de
+  // transferencia de Supabase. Ahora la carga inicial es acotada y el refresh
+  // automático pide únicamente los registros nuevos (payload ~0).
+  const DEFAULT_WINDOW_DAYS = 30;
   const JSONBIN_BASE = 'https://api.jsonbin.io/v3/b/';
   // Static fallback hosted on the same GitHub Pages site. Updated manually
   // by committing to the repo when both Supabase and JSONBin are unreachable.
@@ -894,6 +903,7 @@
   const recordsBodyEl = $('recordsBody');
   const emptyEl = $('emptyState');
   const btnRefreshEl = $('btnRefresh');
+  const btnLoadAllEl = $('btnLoadAll');
   const btnDownloadEl = $('btnDownload');
   const btnDownloadXlsxEl = $('btnDownloadXlsx');
   const btnSnapshotEl = $('btnSnapshot');
@@ -928,6 +938,9 @@
   //                 static fallback-snapshot.json hosted in the repo.
   //   'none'     -> we have nothing to show.
   let currentSource = 'none';
+  // Inicio de la ventana de historia ya cargada (ISO). null = historia completa.
+  let loadedSinceIso = null;
+  let fullHistoryLoaded = false;
   let lastFetchAt = null;     // ISO of last successful JSONBin fetch
   let lastCacheAt = null;     // ISO of the cache being shown (if source='cache')
   let lastSnapshotAt = null;  // ISO of the snapshot being shown (if source='snapshot')
@@ -1099,7 +1112,10 @@
     };
   }
 
-  async function supabaseFetchAll() {
+  // opts: { since, before, newerThan } (ISO). Filtran en el SERVIDOR, así el
+  // navegador solo descarga lo que realmente va a mostrar.
+  async function supabaseFetchAll(opts) {
+    opts = opts || {};
     if (!isSupabaseConfigured()) throw makeFetchError(0, 'Supabase not configured');
     // PostgREST limita cada respuesta a 1000 filas. Para traer ABSOLUTAMENTE
     // todos los registros paginamos con el header Range en bloques de 1000
@@ -1111,8 +1127,11 @@
       'apikey':        SUPABASE_ANON_KEY,
       'Authorization': 'Bearer ' + SUPABASE_ANON_KEY
     };
-    const url = SUPABASE_URL + '/rest/v1/' + SUPABASE_TABLE
+    let url = SUPABASE_URL + '/rest/v1/' + SUPABASE_TABLE
       + '?select=*&order=timestamp.desc,id.desc';
+    if (opts.since)     url += '&timestamp=gte.' + encodeURIComponent(opts.since);
+    if (opts.before)    url += '&timestamp=lt.'  + encodeURIComponent(opts.before);
+    if (opts.newerThan) url += '&timestamp=gt.'  + encodeURIComponent(opts.newerThan);
     const byId = new Map();
     let offset = 0;
     for (let guard = 0; guard < 1000; guard++) {
@@ -1168,10 +1187,10 @@
   // Dispatch: try Supabase first (primary), fall back to JSONBin if the user
   // still has JSONBin credentials configured. This keeps the historical data
   // accessible during the migration window.
-  async function fetchAll() {
+  async function fetchAll(opts) {
     if (isSupabaseConfigured()) {
       try {
-        return await supabaseFetchAll();
+        return await supabaseFetchAll(opts);
       } catch (supaErr) {
         if (!creds) throw supaErr;
         try { console.warn('Supabase fetch failed, falling back to JSONBin:', supaErr); } catch (_) {}
@@ -1235,6 +1254,26 @@
     });
   }
 
+  // Une lo que ya teníamos con lo recién traído, deduplicando por id.
+  function mergeRecords(base, incoming) {
+    const byId = new Map();
+    base.forEach((r) => { if (r && r.id != null) byId.set(String(r.id), r); });
+    incoming.forEach((r) => { if (r && r.id != null) byId.set(String(r.id), r); });
+    return sortByTimestampDesc(Array.from(byId.values()));
+  }
+
+  function windowStartIso(days) {
+    return new Date(Date.now() - days * 24 * 60 * 60 * 1000).toISOString();
+  }
+  // Timestamp del registro más nuevo que ya tenemos (para pedir solo lo posterior).
+  function newestLoadedIso() {
+    for (let i = 0; i < allRecords.length; i++) {
+      const t = allRecords[i] && allRecords[i].timestamp;
+      if (t && isFinite(new Date(t).getTime())) return t;
+    }
+    return null;
+  }
+
   // Updates all the source-dependent UI (banner, status pill, subtitle).
   function applySourceUi() {
     updateBanner();
@@ -1248,8 +1287,12 @@
     const totalTxt = total + ' record' + (total === 1 ? '' : 's');
     if (currentSource === 'live') {
       const now = new Date();
+      const scope = fullHistoryLoaded
+        ? 'full history'
+        : 'last ' + DEFAULT_WINDOW_DAYS + ' days';
       recordsSubEl.textContent = 'Last refresh: ' + pad(now.getHours()) + ':' + pad(now.getMinutes()) + ':' + pad(now.getSeconds())
-        + ' · ' + totalTxt + ' total';
+        + ' · ' + totalTxt + ' loaded (' + scope + ')'
+        + (fullHistoryLoaded ? '' : ' · use “Full history” for older months');
     } else if (currentSource === 'cache') {
       recordsSubEl.textContent = 'Showing cached data · ' + totalTxt + ' total (last successful sync ' + fmtRelative(lastCacheAt) + ')';
     } else if (currentSource === 'snapshot') {
@@ -1275,8 +1318,25 @@
     }
     setCloudStatus('syncing');
     try {
-      const arr = await fetchAll();
-      allRecords = sortByTimestampDesc(arr);
+      // Dos modos, ambos baratos en transferencia:
+      //  - Primera carga: solo la ventana por defecto (últimos N días).
+      //  - Refresh siguiente: SOLO los registros nuevos desde el último que
+      //    ya tenemos. Si no hay nada nuevo, la respuesta es un array vacío.
+      const newest = newestLoadedIso();
+      if (allRecords.length > 0 && newest) {
+        const fresh = await fetchAll({ newerThan: newest });
+        allRecords = mergeRecords(allRecords, fresh);
+        if (!silent) {
+          showToast(fresh.length > 0
+            ? fresh.length + ' new record' + (fresh.length === 1 ? '' : 's')
+            : 'Up to date · no new records');
+        }
+      } else {
+        loadedSinceIso = fullHistoryLoaded ? null : windowStartIso(DEFAULT_WINDOW_DAYS);
+        const arr = await fetchAll(loadedSinceIso ? { since: loadedSinceIso } : {});
+        allRecords = sortByTimestampDesc(arr);
+        if (!silent) showToast('Loaded · ' + allRecords.length + ' record' + (allRecords.length === 1 ? '' : 's'));
+      }
       cacheRecords(allRecords);
       currentSource  = 'live';
       lastFetchAt    = new Date().toISOString();
@@ -1284,7 +1344,6 @@
       rebuildPilotFilter();
       render();
       applySourceUi();
-      if (!silent) showToast('Refreshed · ' + allRecords.length + ' record' + (allRecords.length === 1 ? '' : 's'));
     } catch (e) {
       lastErrorInfo = { status: e.status || 0, message: e.message || 'Unknown error' };
       // Try to keep showing useful data. Order matters: prefer the local
@@ -1298,6 +1357,57 @@
         const human = describeError(lastErrorInfo);
         showToast(human, 'warn');
       }
+    }
+  }
+
+  // Trae historia más vieja bajo demanda (rango [sinceIso, loadedSinceIso)).
+  // Se dispara cuando el usuario filtra por una fecha anterior a lo cargado.
+  async function loadHistorySince(sinceIso, silent) {
+    if (fullHistoryLoaded) return;
+    if (!sinceIso) return;
+    if (loadedSinceIso && new Date(sinceIso).getTime() >= new Date(loadedSinceIso).getTime()) return;
+    setCloudStatus('syncing');
+    try {
+      const older = await fetchAll({ since: sinceIso, before: loadedSinceIso || undefined });
+      allRecords = mergeRecords(allRecords, older);
+      loadedSinceIso = sinceIso;
+      cacheRecords(allRecords);
+      currentSource = 'live';
+      lastErrorInfo = null;
+      rebuildPilotFilter();
+      render();
+      applySourceUi();
+      if (!silent) showToast('Loaded ' + older.length + ' older record' + (older.length === 1 ? '' : 's'));
+    } catch (e) {
+      lastErrorInfo = { status: e.status || 0, message: e.message || 'Unknown error' };
+      applySourceUi();
+      if (!silent) showToast(describeError(lastErrorInfo), 'warn');
+    }
+  }
+
+  // Descarga TODA la historia. Es explícito y bajo demanda (por ejemplo, para
+  // exportar todo), no algo que ocurra en cada refresh automático.
+  async function loadFullHistory() {
+    if (!navigator.onLine) { showToast('No internet connection', 'warn'); return; }
+    setCloudStatus('syncing');
+    showToast('Loading full history…');
+    try {
+      const arr = await fetchAll({});
+      allRecords = sortByTimestampDesc(arr);
+      fullHistoryLoaded = true;
+      loadedSinceIso = null;
+      cacheRecords(allRecords);
+      currentSource = 'live';
+      lastFetchAt = new Date().toISOString();
+      lastErrorInfo = null;
+      rebuildPilotFilter();
+      render();
+      applySourceUi();
+      showToast('Full history loaded · ' + allRecords.length + ' records');
+    } catch (e) {
+      lastErrorInfo = { status: e.status || 0, message: e.message || 'Unknown error' };
+      applySourceUi();
+      showToast(describeError(lastErrorInfo), 'warn');
     }
   }
 
@@ -1364,11 +1474,12 @@
     if (!info) return 'Could not reach the cloud';
     const s = info.status;
     if (s === 0)                  return 'Network unreachable · check connection';
-    if (s === 401 || s === 403)   return 'Auth rejected by JSONBin (HTTP ' + s + ')';
-    if (s === 404)                return 'Bin not found (HTTP 404)';
-    if (s === 429)                return 'JSONBin rate limit hit (HTTP 429)';
-    if (s >= 500 && s < 600)      return 'JSONBin service unavailable (HTTP ' + s + ')';
-    return 'JSONBin error (HTTP ' + s + ')';
+    if (s === 402)                return 'Supabase quota exceeded (HTTP 402) · the project is restricted until the plan or spend cap is updated in Supabase → Billing';
+    if (s === 401 || s === 403)   return 'Auth rejected by the backend (HTTP ' + s + ')';
+    if (s === 404)                return 'Data source not found (HTTP 404)';
+    if (s === 429)                return 'Rate limit hit (HTTP 429)';
+    if (s >= 500 && s < 600)      return 'Backend unavailable (HTTP ' + s + ')';
+    return 'Backend error (HTTP ' + s + ')';
   }
 
   function fmtRelative(iso) {
@@ -1403,9 +1514,9 @@
       el.innerHTML =
         '<div class="sb-row">' +
           '<span class="sb-tag">Cached data</span>' +
-          '<span class="sb-msg">JSONBin is unreachable (' + escapeHtml(describeError(lastErrorInfo)) + '). ' +
+          '<span class="sb-msg">The cloud backend is unreachable (' + escapeHtml(describeError(lastErrorInfo)) + '). ' +
           'Showing the last successful sync (' + escapeHtml(fmtRelative(lastCacheAt)) + '). ' +
-          'Pilots\u2019 history is safe in the bin and will reappear automatically when the service recovers. ' +
+          'No data is lost: pilots\u2019 new loads stay queued on each device and upload automatically once the service is back. ' +
           'Auto-retry every ' + (AUTO_REFRESH_MS / 1000) + 's.</span>' +
         '</div>';
     } else if (currentSource === 'snapshot') {
@@ -1417,9 +1528,9 @@
           '<span class="sb-msg">' +
             (readonlyMode
               ? 'Read-only view of the latest manual snapshot' + (lastSnapshotAt ? ' (' + escapeHtml(fmtRelative(lastSnapshotAt)) + ')' : '') + '. '
-              : 'JSONBin is unreachable (' + escapeHtml(describeError(lastErrorInfo)) + '). ' +
+              : 'The cloud backend is unreachable (' + escapeHtml(describeError(lastErrorInfo)) + '). ' +
                 'Showing the manual snapshot committed to the repo' + (lastSnapshotAt ? ' ' + escapeHtml(fmtRelative(lastSnapshotAt)) : '') + '. ') +
-            'Pilots\u2019 new loads are queued locally on each device and will sync when JSONBin recovers.' +
+            'Pilots\u2019 new loads are queued locally on each device and will sync when the service recovers.' +
           '</span>' +
         '</div>';
     } else {
@@ -1586,7 +1697,13 @@
     a.click();
     document.body.removeChild(a);
     URL.revokeObjectURL(url);
-    showToast(filtered.length + ' record' + (filtered.length === 1 ? '' : 's') + ' exported');
+    showToast(filtered.length + ' record' + (filtered.length === 1 ? '' : 's') + ' exported' + exportScopeNote());
+  }
+
+  // Aclara que el export cubre lo que está cargado (ventana por defecto) salvo
+  // que hayan pedido la historia completa.
+  function exportScopeNote() {
+    return fullHistoryLoaded ? '' : ' · loaded range only, click “Full history” to export everything';
   }
 
   // ===================== XLSX (Excel) =====================
@@ -1637,7 +1754,7 @@
       XLSX.utils.book_append_sheet(wb, ws, 'Fuel records');
       const stamp = new Date().toISOString().slice(0, 10);
       XLSX.writeFile(wb, 'viva_fuel_records_' + stamp + '.xlsx');
-      showToast(filtered.length + ' record' + (filtered.length === 1 ? '' : 's') + ' exported · xlsx');
+      showToast(filtered.length + ' record' + (filtered.length === 1 ? '' : 's') + ' exported · xlsx' + exportScopeNote());
     } catch (err) {
       showToast('Excel export failed · falling back to CSV', 'warn');
       handleDownload();
@@ -1955,6 +2072,9 @@
     refreshFromCloud(true);
     if (refreshTimer) clearInterval(refreshTimer);
     refreshTimer = setInterval(() => {
+      // Con la pestaña en segundo plano no gastamos transferencia: al volver a
+      // primer plano se refresca igual (ver visibilitychange más abajo).
+      if (document.hidden) return;
       if (navigator.onLine) refreshFromCloud(true);
       else setCloudStatus('offline');
     }, AUTO_REFRESH_MS);
@@ -1968,11 +2088,19 @@
   }
   fSearchEl.addEventListener('input', scheduleRender);
   fPilotEl.addEventListener('change', scheduleRender);
-  fFromEl.addEventListener('change', scheduleRender);
+  // Si piden una fecha anterior a la ventana cargada, traemos ese tramo viejo.
+  fFromEl.addEventListener('change', () => {
+    scheduleRender();
+    const from = fFromEl.value;
+    if (from && !readonlyMode && navigator.onLine) {
+      loadHistorySince(new Date(from + 'T00:00:00Z').toISOString(), false);
+    }
+  });
   fToEl.addEventListener('change', scheduleRender);
   fStatusEl.addEventListener('change', scheduleRender);
 
   btnRefreshEl.addEventListener('click', () => refreshFromCloud(false));
+  if (btnLoadAllEl) btnLoadAllEl.addEventListener('click', loadFullHistory);
   btnDownloadEl.addEventListener('click', handleDownload);
   btnDownloadXlsxEl.addEventListener('click', handleDownloadXlsx);
   if (btnSnapshotEl) btnSnapshotEl.addEventListener('click', handleExportSnapshot);
@@ -2039,7 +2167,10 @@
   window.addEventListener('online', () => refreshFromCloud(true));
   window.addEventListener('offline', () => setCloudStatus('offline'));
   document.addEventListener('visibilitychange', () => {
-    if (document.visibilityState === 'visible' && creds) refreshFromCloud(true);
+    // Al volver a la pestaña refrescamos (incremental: payload mínimo). Antes
+    // solo ocurría con credenciales de JSONBin; ahora también con Supabase.
+    if (document.visibilityState !== 'visible' || readonlyMode) return;
+    if (creds || isSupabaseConfigured()) refreshFromCloud(true);
   });
 
   tickClock();
