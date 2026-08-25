@@ -1434,10 +1434,13 @@
           if (painted) return;
           painted = true;
           allRecords = sortByTimestampDesc(rows);
-          currentSource = 'live';
           rebuildPilotFilter();
           render();
-          applySourceUi();
+          // Seguimos en estado "syncing": todavía faltan páginas por bajar.
+          if (recordsSubEl) {
+            recordsSubEl.textContent = 'Showing the newest ' + allRecords.length
+              + ' records · loading the rest of the last ' + DEFAULT_WINDOW_DAYS + ' days…';
+          }
         };
         const arr = await fetchAll(opts);
         allRecords = sortByTimestampDesc(arr);
