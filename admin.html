@@ -652,6 +652,58 @@
   }
   .toast.warn .dot { background: var(--viva-magenta); }
 
+  /* ======================== ARCHIVE ======================== */
+  .archive-card {
+    margin-top: 18px;
+    background: var(--surface);
+    border: 1px solid var(--line);
+    border-radius: var(--radius-md);
+    padding: 18px 20px;
+    box-shadow: var(--shadow-sm);
+  }
+  .archive-head {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 18px;
+    flex-wrap: wrap;
+  }
+  .archive-sub {
+    margin: 0;
+    font-size: 13px;
+    color: var(--ink-2);
+    line-height: 1.5;
+  }
+  .archive-months {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 8px;
+    margin-top: 16px;
+  }
+  .archive-chip {
+    display: inline-flex;
+    align-items: center;
+    gap: 8px;
+    padding: 6px 12px;
+    border: 1px solid var(--line);
+    border-radius: 999px;
+    background: var(--surface-alt);
+    font-family: var(--font-mono);
+    font-size: 11px;
+    letter-spacing: 0.06em;
+    color: var(--ink-2);
+    white-space: nowrap;
+  }
+  .archive-chip b { color: var(--ink); font-weight: 700; }
+  .archive-chip .n {
+    color: var(--muted);
+    font-size: 10px;
+  }
+  .archive-empty {
+    font-size: 13px;
+    color: var(--muted);
+  }
+
   /* ======================== HIDDEN ======================== */
   [hidden] { display: none !important; }
 </style>
@@ -840,6 +892,25 @@
       </div>
     </div>
   </section>
+
+  <!-- ====== History archive (zip por mes, generado en el navegador) ====== -->
+  <section>
+    <div class="section-tag">03 · Archive</div>
+    <h2 class="section-title" style="font-size: clamp(22px, 2.6vw, 30px);">History archive</h2>
+    <p class="section-sub">Pack the loaded history into a single compressed <b>.zip</b>, with one CSV per month plus a manifest. Nothing is deleted from the database, and it works even while the cloud backend is down.</p>
+    <div class="archive-card">
+      <div class="archive-head">
+        <p class="archive-sub" id="archiveSub">No records loaded yet.</p>
+        <div class="actions">
+          <button class="btn primary" id="btnArchiveZip" type="button">
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="7 10 12 15 17 10"/><line x1="12" y1="15" x2="12" y2="3"/></svg>
+            Download .zip
+          </button>
+        </div>
+      </div>
+      <div class="archive-months" id="archiveMonths"></div>
+    </div>
+  </section>
 </main>
 
 <footer class="foot" id="footEl" hidden>
@@ -904,6 +975,7 @@
   const emptyEl = $('emptyState');
   const btnRefreshEl = $('btnRefresh');
   const btnLoadAllEl = $('btnLoadAll');
+  const btnArchiveZipEl = $('btnArchiveZip');
   const btnDownloadEl = $('btnDownload');
   const btnDownloadXlsxEl = $('btnDownloadXlsx');
   const btnSnapshotEl = $('btnSnapshot');
@@ -1188,16 +1260,24 @@
   // still has JSONBin credentials configured. This keeps the historical data
   // accessible during the migration window.
   async function fetchAll(opts) {
+    let primaryErr = null;
     if (isSupabaseConfigured()) {
       try {
         return await supabaseFetchAll(opts);
       } catch (supaErr) {
+        primaryErr = supaErr;
         if (!creds) throw supaErr;
         try { console.warn('Supabase fetch failed, falling back to JSONBin:', supaErr); } catch (_) {}
         // fall through to JSONBin
       }
     }
-    return jsonbinFetchAll();
+    try {
+      return await jsonbinFetchAll();
+    } catch (binErr) {
+      // Supabase es el backend principal: si falló, su error es el que explica
+      // el problema real. El de JSONBin (legacy) solo confundiría.
+      throw primaryErr || binErr;
+    }
   }
 
   // ====== Last-known records cache (frente A) ======
@@ -1601,6 +1681,7 @@
   function render() {
     const filtered = applyFilters(allRecords);
     updateStats(filtered);
+    renderArchive();
 
     if (filtered.length === 0) {
       recordsBodyEl.innerHTML = '';
@@ -1704,6 +1785,172 @@
   // que hayan pedido la historia completa.
   function exportScopeNote() {
     return fullHistoryLoaded ? '' : ' · loaded range only, click “Full history” to export everything';
+  }
+
+  // ===================== History archive (.zip) =====================
+  // Empaqueta la historia cargada en un .zip con un CSV por mes, generado
+  // enteramente en el navegador (sin servidor ni librerías externas). No borra
+  // nada de la base: es solo un respaldo para guardar los meses viejos afuera.
+  // Funciona igual con el backend caído, porque usa los registros ya cargados
+  // o los cacheados en este dispositivo.
+  function groupByMonth(arr) {
+    const map = new Map();
+    arr.forEach((r) => {
+      const key = String(r.timestamp || '').slice(0, 7) || 'unknown';
+      if (!map.has(key)) map.set(key, []);
+      map.get(key).push(r);
+    });
+    // Meses más recientes primero.
+    return new Map(Array.from(map.entries()).sort((a, b) => (a[0] < b[0] ? 1 : -1)));
+  }
+
+  function renderArchive() {
+    const box = $('archiveMonths');
+    const sub = $('archiveSub');
+    if (!box) return;
+    const months = groupByMonth(allRecords);
+    if (months.size === 0) {
+      box.innerHTML = '<span class="archive-empty">No records loaded yet.</span>';
+      if (sub) sub.textContent = 'Nothing to archive yet.';
+      return;
+    }
+    box.innerHTML = Array.from(months.entries()).map(([m, rows]) =>
+      '<span class="archive-chip"><b>' + escapeHtml(m) + '</b>' +
+      '<span class="n">' + rows.length + '</span></span>'
+    ).join('');
+    if (sub) {
+      sub.textContent = allRecords.length + ' record' + (allRecords.length === 1 ? '' : 's') +
+        ' across ' + months.size + ' month' + (months.size === 1 ? '' : 's') +
+        (fullHistoryLoaded ? ' (full history).' : ' (loaded range · click “Full history” above to include older months).');
+    }
+  }
+
+  // --- Mini escritor de ZIP (formato estándar, DEFLATE nativo si está disponible)
+  const CRC_TABLE = (function () {
+    const t = new Uint32Array(256);
+    for (let n = 0; n < 256; n++) {
+      let c = n;
+      for (let k = 0; k < 8; k++) c = (c & 1) ? (0xEDB88320 ^ (c >>> 1)) : (c >>> 1);
+      t[n] = c >>> 0;
+    }
+    return t;
+  })();
+  function crc32(bytes) {
+    let c = 0xFFFFFFFF;
+    for (let i = 0; i < bytes.length; i++) c = CRC_TABLE[(c ^ bytes[i]) & 0xFF] ^ (c >>> 8);
+    return (c ^ 0xFFFFFFFF) >>> 0;
+  }
+  async function deflateRaw(bytes) {
+    if (typeof CompressionStream === 'undefined') return null;
+    try {
+      const stream = new Blob([bytes]).stream().pipeThrough(new CompressionStream('deflate-raw'));
+      return new Uint8Array(await new Response(stream).arrayBuffer());
+    } catch (e) {
+      return null; // navegador viejo: guardamos sin comprimir, el zip sigue siendo válido
+    }
+  }
+  async function buildZipBlob(files) {
+    const enc = new TextEncoder();
+    const parts = [];
+    const central = [];
+    let offset = 0;
+    for (const f of files) {
+      const nameBytes = enc.encode(f.name);
+      const raw = enc.encode(f.text);
+      const crc = crc32(raw);
+      let method = 0;
+      let payload = raw;
+      const deflated = await deflateRaw(raw);
+      if (deflated && deflated.length < raw.length) {
+        method = 8;
+        payload = deflated;
+      }
+      const head = new Uint8Array(30 + nameBytes.length);
+      const hv = new DataView(head.buffer);
+      hv.setUint32(0, 0x04034b50, true);
+      hv.setUint16(4, 20, true);
+      hv.setUint16(8, method, true);
+      hv.setUint32(14, crc, true);
+      hv.setUint32(18, payload.length, true);
+      hv.setUint32(22, raw.length, true);
+      hv.setUint16(26, nameBytes.length, true);
+      head.set(nameBytes, 30);
+      parts.push(head, payload);
+      central.push({ nameBytes: nameBytes, crc: crc, comp: payload.length, orig: raw.length, method: method, offset: offset });
+      offset += head.length + payload.length;
+    }
+    const dirParts = [];
+    let dirSize = 0;
+    central.forEach((c) => {
+      const h = new Uint8Array(46 + c.nameBytes.length);
+      const hv = new DataView(h.buffer);
+      hv.setUint32(0, 0x02014b50, true);
+      hv.setUint16(4, 20, true);
+      hv.setUint16(6, 20, true);
+      hv.setUint16(10, c.method, true);
+      hv.setUint32(16, c.crc, true);
+      hv.setUint32(20, c.comp, true);
+      hv.setUint32(24, c.orig, true);
+      hv.setUint16(28, c.nameBytes.length, true);
+      hv.setUint32(42, c.offset, true);
+      h.set(c.nameBytes, 46);
+      dirParts.push(h);
+      dirSize += h.length;
+    });
+    const end = new Uint8Array(22);
+    const ev = new DataView(end.buffer);
+    ev.setUint32(0, 0x06054b50, true);
+    ev.setUint16(8, central.length, true);
+    ev.setUint16(10, central.length, true);
+    ev.setUint32(12, dirSize, true);
+    ev.setUint32(16, offset, true);
+    return new Blob(parts.concat(dirParts, [end]), { type: 'application/zip' });
+  }
+
+  async function handleArchiveZip() {
+    if (allRecords.length === 0) {
+      showToast('No records to archive', 'warn');
+      return;
+    }
+    const btn = $('btnArchiveZip');
+    if (btn) btn.disabled = true;
+    showToast('Building archive…');
+    try {
+      const months = groupByMonth(allRecords);
+      const files = [];
+      const perMonth = {};
+      months.forEach((rows, month) => {
+        perMonth[month] = rows.length;
+        files.push({ name: 'fuel_records_' + month + '.csv', text: '\uFEFF' + buildCsv(rows) });
+      });
+      files.push({
+        name: 'MANIFEST.json',
+        text: JSON.stringify({
+          archivedAt: new Date().toISOString(),
+          totalRecords: allRecords.length,
+          months: perMonth,
+          scope: fullHistoryLoaded ? 'full history' : 'loaded range (last ' + DEFAULT_WINDOW_DAYS + ' days or cached data)',
+          source: currentSource,
+          note: 'Archive generated from admin.html. Nothing was deleted from the database.'
+        }, null, 2)
+      });
+      const blob = await buildZipBlob(files);
+      const url = URL.createObjectURL(blob);
+      const a = document.createElement('a');
+      a.href = url;
+      a.download = 'viva_fuel_archive_' + new Date().toISOString().slice(0, 10) + '.zip';
+      document.body.appendChild(a);
+      a.click();
+      document.body.removeChild(a);
+      URL.revokeObjectURL(url);
+      const kb = Math.max(1, Math.round(blob.size / 1024));
+      showToast('Archive ready · ' + months.size + ' month' + (months.size === 1 ? '' : 's') + ' · ' + kb + ' KB');
+    } catch (e) {
+      showToast('Could not build the archive', 'warn');
+      try { console.error('archive error', e); } catch (_) {}
+    } finally {
+      if (btn) btn.disabled = false;
+    }
   }
 
   // ===================== XLSX (Excel) =====================
@@ -2101,6 +2348,7 @@
 
   btnRefreshEl.addEventListener('click', () => refreshFromCloud(false));
   if (btnLoadAllEl) btnLoadAllEl.addEventListener('click', loadFullHistory);
+  if (btnArchiveZipEl) btnArchiveZipEl.addEventListener('click', handleArchiveZip);
   btnDownloadEl.addEventListener('click', handleDownload);
   btnDownloadXlsxEl.addEventListener('click', handleDownloadXlsx);
   if (btnSnapshotEl) btnSnapshotEl.addEventListener('click', handleExportSnapshot);
