@@ -12,7 +12,11 @@
 
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
-<link href="https://fonts.googleapis.com/css2?family=Bricolage+Grotesque:opsz,wght@12..96,500;12..96,600;12..96,700;12..96,800&family=Manrope:wght@400;500;600;700&family=JetBrains+Mono:wght@400;500;700&display=swap" rel="stylesheet">
+<!-- Fuentes NO bloqueantes: se piden con media="print" (el navegador no espera
+     a que bajen para pintar) y al cargar se activan. Con red lenta la app
+     aparece al instante con la fuente del sistema y luego cambia. -->
+<link href="https://fonts.googleapis.com/css2?family=Bricolage+Grotesque:opsz,wght@12..96,500;12..96,600;12..96,700;12..96,800&family=Manrope:wght@400;500;600;700&family=JetBrains+Mono:wght@400;500;700&display=swap" rel="stylesheet" media="print" onload="this.media='all'">
+<noscript><link href="https://fonts.googleapis.com/css2?family=Bricolage+Grotesque:opsz,wght@12..96,500;12..96,600;12..96,700;12..96,800&family=Manrope:wght@400;500;600;700&family=JetBrains+Mono:wght@400;500;700&display=swap" rel="stylesheet"></noscript>
 
 <style>
   :root {
@@ -712,22 +716,14 @@
   }
   .toast.warn .dot { background: var(--viva-magenta); }
 
-  /* ======================== TABLE ======================== */
-  .records-head {
-    display: flex;
-    align-items: end;
-    justify-content: space-between;
-    gap: 16px;
-    flex-wrap: wrap;
-    margin-bottom: 4px;
-  }
-  .records-head .actions { margin-top: 0; }
-  .records-meta {
+  /* ======================== SYNC STATUS ======================== */
+  /* v1.7: la tabla "Load history" se quitó de la vista del piloto. Solo queda
+     el indicador de sincronización, ahora debajo de los botones de acción. */
+  .sync-row {
     display: flex;
     align-items: center;
-    gap: 12px;
-    flex-wrap: wrap;
-    margin-bottom: 8px;
+    justify-content: flex-end;
+    margin-top: 6px;
   }
   .cloud-status {
     display: inline-flex;
@@ -795,102 +791,6 @@
     0%, 100% { opacity: 1; transform: scale(1); }
     50% { opacity: 0.45; transform: scale(0.85); }
   }
-  tr.row-pending td { opacity: 0.7; }
-  tr.row-pending td:first-child::before {
-    content: "·";
-    color: var(--viva-magenta);
-    font-weight: 900;
-    margin-right: 4px;
-  }
-
-  .table-wrap {
-    overflow: auto;
-    border-radius: var(--radius-lg);
-    border: 1px solid var(--line);
-    background: var(--surface);
-    box-shadow: var(--shadow-sm);
-  }
-
-  table.records {
-    width: 100%;
-    border-collapse: collapse;
-    min-width: 920px;
-  }
-  table.records thead th {
-    text-align: left;
-    font-family: var(--font-mono);
-    font-size: 10px;
-    letter-spacing: 0.2em;
-    text-transform: uppercase;
-    color: var(--muted);
-    font-weight: 700;
-    padding: 14px 18px;
-    border-bottom: 1px solid var(--line);
-    background: var(--surface-alt);
-    white-space: nowrap;
-    position: sticky;
-    top: 0;
-  }
-  table.records tbody td {
-    padding: 14px 18px;
-    border-bottom: 1px solid var(--line);
-    font-family: var(--font-mono);
-    font-size: 13px;
-    color: var(--ink);
-    white-space: nowrap;
-  }
-  table.records tbody tr:last-child td { border-bottom: 0; }
-  table.records tbody tr:hover td { background: var(--surface-alt); }
-
-  td.flight { font-weight: 700; letter-spacing: 0.04em; }
-  td.range { color: var(--viva-green-dark); font-weight: 700; }
-
-  .pill {
-    display: inline-flex;
-    align-items: center;
-    gap: 6px;
-    padding: 4px 10px;
-    border-radius: 999px;
-    font-family: var(--font-mono);
-    font-size: 10px;
-    letter-spacing: 0.18em;
-    text-transform: uppercase;
-    font-weight: 700;
-    border: 1px solid;
-  }
-  .pill.ok {
-    color: var(--viva-green-dark);
-    background: var(--viva-green-soft);
-    border-color: rgba(0, 143, 51, 0.25);
-  }
-  .pill.no-info {
-    color: var(--viva-magenta-dark);
-    background: var(--viva-magenta-soft);
-    border-color: rgba(191, 0, 112, 0.25);
-  }
-  .pill .d { width: 6px; height: 6px; border-radius: 999px; background: currentColor; }
-
-  .empty {
-    padding: 60px 24px;
-    text-align: center;
-    color: var(--muted);
-  }
-  .empty .ic {
-    width: 48px; height: 48px; margin: 0 auto 14px;
-    border-radius: 12px;
-    background: var(--surface-alt);
-    display: grid; place-items: center;
-    color: var(--line-strong);
-    border: 1px dashed var(--line-strong);
-  }
-  .empty h4 {
-    font-family: var(--font-display);
-    color: var(--ink-2);
-    font-weight: 700;
-    margin: 0 0 4px;
-    letter-spacing: -0.02em;
-  }
-  .empty p { margin: 0; font-size: 14px; }
 
   /* ======================== FOOTER ======================== */
   footer.foot {
@@ -921,8 +821,6 @@
   /* ======================== TABLET ======================== */
   @media (max-width: 880px) {
     .topbar-title small { display: none; }
-    .records-head { flex-direction: column; align-items: stretch; }
-    .records-head .actions { margin-top: 12px; }
   }
 
   /* ======================== MOBILE (≤720px) ======================== */
@@ -954,11 +852,7 @@
     .range-meta { font-size: 10px; gap: 8px; }
     .actions { gap: 10px; }
     .actions .btn { flex: 1 1 100%; padding: 14px 18px; font-size: 14px; }
-    table.records thead th, table.records tbody td { padding: 12px 14px; font-size: 12px; }
-    .table-wrap {
-      position: relative;
-      -webkit-overflow-scrolling: touch;
-    }
+    .sync-row { justify-content: center; }
     footer.foot { font-size: 10px; letter-spacing: 0.14em; padding: 18px 14px 32px; }
   }
 
@@ -994,11 +888,6 @@
   input[type="number"] { -moz-appearance: textfield; appearance: textfield; }
 
   /* ======================== WRONG LOAD ======================== */
-  .pill.wrong-load {
-    color: #991B1B;
-    background: #FEF2F2;
-    border-color: rgba(153, 27, 27, 0.25);
-  }
   .btn.danger {
     --btn-bg: white;
     --btn-fg: #991B1B;
@@ -1407,71 +1296,15 @@
           <span class="ah-ic" aria-hidden="true">!</span>
           <span id="actionHintText"></span>
         </p>
-      </div>
-    </div>
-  </section>
-
-  <!-- ============== RECORDS ============== -->
-  <section aria-labelledby="rec-title">
-    <div class="records-head">
-      <div>
-        <div class="records-meta">
-          <div class="section-tag">02 · Records</div>
+        <!-- v1.7: indicador de sync (antes vivía en la sección "Load history",
+             que se quitó). Muestra si el último registro ya subió al servidor. -->
+        <div class="sync-row">
           <span class="cloud-status" id="cloudStatus" data-status="local" title="Cloud sync status">
             <span class="dot" aria-hidden="true"></span>
             <span class="lbl">Local mode</span>
             <span class="pending" id="pendingBadge" hidden>0</span>
           </span>
         </div>
-        <h2 id="rec-title" class="section-title" style="font-size: clamp(22px, 2.6vw, 30px);">Load history</h2>
-        <p class="section-sub" id="recordsSub">All calculations are stored on this device. Download them as CSV to share or archive.</p>
-      </div>
-      <div class="actions">
-        <button class="btn ghost" id="btnRefresh" type="button" hidden>
-          <span class="ic" aria-hidden="true">
-            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 12a9 9 0 1 1-3-6.7"/><path d="M21 4v5h-5"/></svg>
-          </span>
-          Refresh
-        </button>
-        <button class="btn ghost" id="btnDownload" type="button">
-          <span class="ic" aria-hidden="true">
-            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 4v12"/><path d="M7 11l5 5 5-5"/><path d="M5 20h14"/></svg>
-          </span>
-          Download CSV
-        </button>
-        <button class="btn ghost" id="btnClear" type="button" style="--btn-fg: var(--viva-magenta-dark);">
-          <span class="ic" aria-hidden="true">
-            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><path d="M3 6h18"/><path d="M8 6V4h8v2"/><path d="M6 6l1 14h10l1-14"/></svg>
-          </span>
-          Clear
-        </button>
-      </div>
-    </div>
-
-    <div class="table-wrap" style="margin-top: 14px;">
-      <table class="records" id="recordsTable">
-        <thead>
-          <tr>
-            <th>Date / Time</th>
-            <th>Pilot</th>
-            <th>Flight</th>
-            <th>Departure</th>
-            <th>FR (KG)</th>
-            <th>FOB (KG)</th>
-            <th>Total (KG)</th>
-            <th>Density</th>
-            <th>Range (L)</th>
-            <th>Status</th>
-          </tr>
-        </thead>
-        <tbody id="recordsBody"></tbody>
-      </table>
-      <div class="empty" id="emptyState">
-        <div class="ic" aria-hidden="true">
-          <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M3 7h18"/><path d="M3 12h18"/><path d="M3 17h12"/></svg>
-        </div>
-        <h4>No records yet</h4>
-        <p>Logged loads will appear here.</p>
       </div>
     </div>
   </section>
@@ -1480,7 +1313,7 @@
 
 <footer class="foot">
   <div><span class="stripe" aria-hidden="true"></span> Viva Aerobus · Fuel Operations · Internal operational document</div>
-  <div id="buildInfo">v1.6 · offline-ready</div>
+  <div id="buildInfo">v1.7 · offline-ready</div>
 </footer>
 
 <div class="confirm-overlay" id="confirmOverlay" aria-modal="true" role="dialog" aria-label="Upload confirmed" hidden>
@@ -1535,23 +1368,21 @@
   const PILOTS_KEY  = 'viva_fuel_pilot_history'; // historial (lista) de IDs usados acá
   const PILOT_HISTORY_MAX = 10;
   const MAX_RECORDS = 500;         // tope para no inflar localStorage
+  // v1.7: tiempo máximo que esperamos a Supabase por cada POST. Si vence, el
+  // registro queda "pending" en localStorage y se reintenta solo (mismo camino
+  // que offline). Antes no había límite y con red mala la app quedaba colgada.
+  const PUSH_TIMEOUT_MS = 8000;
+  // v1.7: bloqueo breve tras registrar, para evitar doble toque -> duplicado.
+  const SUBMIT_COOLDOWN_MS = 1500;
 
   // ====================== Backend compartido ======================
-  // Estrategia: Supabase es el backend PRIMARIO (Postgres real, INSERTs atómicos,
-  // escala miles de writes/seg, free tier 500MB). JSONBin queda como FALLBACK
-  // secundario por si Supabase tuviera un problema puntual, y también para que
-  // los registros históricos cargados antes de la migración a Supabase se sigan
-  // viendo hasta que terminemos de portarlos. Si los dos backends están vacíos,
-  // la app corre en MODO LOCAL (cada tablet ve solo sus propios registros).
-
-  // --- Primario: Supabase ---
+  // Supabase es el único backend de escritura (Postgres real, INSERTs atómicos,
+  // idempotentes por id). v1.7: se quitó el fallback a JSONBin del camino del
+  // piloto: llevaba meses devolviendo 403 y solo sumaba latencia. Si Supabase
+  // no está configurado, la app corre en MODO LOCAL (solo guarda en la tablet).
   const SUPABASE_URL      = 'https://bpbrvepsrscakhfserfb.supabase.co';
   const SUPABASE_ANON_KEY = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImJwYnJ2ZXBzcnNjYWtoZnNlcmZiIiwicm9sZSI6ImFub24iLCJpYXQiOjE3Nzk3NDQzODgsImV4cCI6MjA5NTMyMDM4OH0.Wo9WcwPDjWVKvXSoCf97DKHpM7-_1mGFEwcWpatEUQI';
   const SUPABASE_TABLE    = 'fuel_records';
-
-  // --- Fallback: JSONBin (legacy, free tier muy chico) ---
-  const JSONBIN_BIN_ID  = '69f9210eaaba8821976fc1b9';
-  const JSONBIN_API_KEY = '$2a$10$ehXoQ/vAsTbyvKl3LA6AO.BDsT4TrAKMQL1FvQXWx1AU3pLgbMRtO';
 
   // ====================== DOM ======================
   const $ = (id) => document.getElementById(id);
@@ -1575,9 +1406,6 @@
   const btnSave     = $('btnSave');
   const btnNoInfo   = $('btnNoInfo');
   const btnWrongLoad = $('btnWrongLoad');
-  const btnDownload = $('btnDownload');
-  const btnClear    = $('btnClear');
-  const btnRefresh  = $('btnRefresh');
 
   const confirmOverlayEl = $('confirmOverlay');
   const confirmCloseEl   = $('confirmClose');
@@ -1599,12 +1427,8 @@
     return departureEl ? (departureEl.value || '').trim().toUpperCase() : '';
   }
 
-  const recordsBody = $('recordsBody');
-  const emptyState  = $('emptyState');
-  const tableEl     = $('recordsTable');
   const cloudStatusEl = $('cloudStatus');
   const pendingBadgeEl = $('pendingBadge');
-  const recordsSubEl  = $('recordsSub');
 
   const toastEl = $('toast');
   const toastMsg = $('toastMsg');
@@ -1629,10 +1453,6 @@
   function fmtISO(d) {
     return d.getFullYear() + '-' + pad(d.getMonth()+1) + '-' + pad(d.getDate())
       + 'T' + pad(d.getHours()) + ':' + pad(d.getMinutes()) + ':' + pad(d.getSeconds());
-  }
-  function todayFile() {
-    const d = new Date();
-    return d.getFullYear() + '-' + pad(d.getMonth()+1) + '-' + pad(d.getDate());
   }
 
   function showToast(msg, kind) {
@@ -2271,8 +2091,20 @@
         : 'Departure airport is required.');
     }
   }
+  // v1.7: mientras se procesa un registro (y un instante después) los botones
+  // quedan deshabilitados para que un doble toque no genere dos registros.
+  let submitLocked = false;
+  function lockSubmit() {
+    submitLocked = true;
+    syncSubmitState();
+    clearTimeout(lockSubmit._t);
+    lockSubmit._t = setTimeout(() => {
+      submitLocked = false;
+      syncSubmitState();
+    }, SUBMIT_COOLDOWN_MS);
+  }
   function syncSubmitState() {
-    const fullOk = isFormFullyValid();
+    const fullOk = isFormFullyValid() && !submitLocked;
     const minOk  = isMinFormValidForNoInfo();
     if (btnSave) {
       btnSave.disabled = !fullOk;
@@ -2352,19 +2184,26 @@
     }
   }
 
-  // ====================== Cloud (Supabase primario, JSONBin fallback) ======================
+  // ====================== Cloud (Supabase) ======================
   // El piloto NO descarga registros del cloud, solo manda los suyos. La vista
-  // admin (admin.html) es la que lee la tabla / bin completo.
+  // admin (admin.html) es la que lee la tabla completa.
   function isSupabaseConfigured() {
     return typeof SUPABASE_URL === 'string' && /^https:\/\//.test(SUPABASE_URL)
         && typeof SUPABASE_ANON_KEY === 'string' && SUPABASE_ANON_KEY.length >= 40;
   }
-  function isJsonbinConfigured() {
-    return typeof JSONBIN_BIN_ID === 'string' && JSONBIN_BIN_ID.length >= 10
-        && typeof JSONBIN_API_KEY === 'string' && JSONBIN_API_KEY.length >= 20;
-  }
   function isCloudConfigured() {
-    return isSupabaseConfigured() || isJsonbinConfigured();
+    return isSupabaseConfigured();
+  }
+
+  // v1.7: fetch con límite de tiempo. Si el servidor no responde en `ms`, el
+  // request se aborta y se lanza un error -> el llamador lo trata igual que un
+  // corte de red (el registro queda pendiente y se reintenta después).
+  function fetchWithTimeout(url, options, ms) {
+    if (typeof AbortController === 'undefined') return fetch(url, options);
+    const controller = new AbortController();
+    const timer = setTimeout(() => controller.abort(), ms);
+    return fetch(url, Object.assign({}, options, { signal: controller.signal }))
+      .finally(() => clearTimeout(timer));
   }
 
   // --- Supabase wire (Postgres usa snake_case, el frontend camelCase) ---
@@ -2411,7 +2250,7 @@
   async function supabasePushRecord(record) {
     const wire = toSupabaseWire(record);
     if (!wire.id) throw new Error('Record without id');
-    const doPost = (body) => fetch(SUPABASE_URL + '/rest/v1/' + SUPABASE_TABLE, {
+    const doPost = (body) => fetchWithTimeout(SUPABASE_URL + '/rest/v1/' + SUPABASE_TABLE, {
       method: 'POST',
       headers: Object.assign({
         'Content-Type': 'application/json',
@@ -2419,7 +2258,7 @@
       }, supabaseAuthHeaders()),
       body: JSON.stringify(body),
       cache: 'no-store'
-    });
+    }, PUSH_TIMEOUT_MS);
     let r = await doPost(wire);
     // Resiliencia: si la columna no_info_reason todavía no existe en Supabase,
     // el INSERT devuelve 400. En ese caso reintentamos SIN el motivo para que el
@@ -2434,103 +2273,14 @@
     return true;
   }
 
-  // --- JSONBin wire (legacy, mantenemos por compatibilidad) ---
-  const JSONBIN_BASE = 'https://api.jsonbin.io/v3/b/';
-
-  function toJsonbinWire(r) {
-    return {
-      id:        String(r.id || ''),
-      timestamp: r.iso || r.dateTime || '',
-      pilotId:   r.pilotId || '',
-      flight:    r.flight || '',
-      departureAirport: r.departureAirport || '',
-      frKg:      Number.isFinite(r.frKg)    ? r.frKg    : null,
-      fobKg:     Number.isFinite(r.fobKg)   ? r.fobKg   : null,
-      totalKg:   Number.isFinite(r.totalKg) ? r.totalKg : null,
-      density:   Number.isFinite(r.density) ? r.density : null,
-      totalL:    Number.isFinite(r.totalL)  ? r.totalL  : null,
-      lowL:      Number.isFinite(r.lowL)    ? r.lowL    : null,
-      highL:     Number.isFinite(r.highL)   ? r.highL   : null,
-      status:    r.status || '',
-      noInfoReason: r.noInfoReason || null,
-      device:    (typeof navigator !== 'undefined' && navigator.platform) || ''
-    };
-  }
-
-  async function jsonbinFetchAll() {
-    if (!isJsonbinConfigured()) throw new Error('JSONBin not configured');
-    const r = await fetch(JSONBIN_BASE + JSONBIN_BIN_ID + '/latest', {
-      method: 'GET',
-      headers: {
-        'X-Master-Key': JSONBIN_API_KEY,
-        'X-Bin-Meta':   'false'
-      },
-      cache: 'no-store'
-    });
-    if (!r.ok) throw new Error('JSONBin GET ' + r.status);
-    const body = await r.json();
-    if (Array.isArray(body)) return body;
-    if (body && Array.isArray(body.records)) return body.records;
-    return [];
-  }
-
-  async function jsonbinReplaceAll(arr) {
-    const r = await fetch(JSONBIN_BASE + JSONBIN_BIN_ID, {
-      method: 'PUT',
-      headers: {
-        'Content-Type': 'application/json',
-        'X-Master-Key': JSONBIN_API_KEY
-      },
-      body: JSON.stringify(arr)
-    });
-    if (!r.ok) throw new Error('JSONBin PUT ' + r.status);
-  }
-
-  // Legacy append-with-verify: lee, agrega si falta el id, escribe, y reverifica
-  // que quedó. Se mantiene solo como fallback si Supabase no estuviera disponible.
-  async function jsonbinPushRecord(record) {
-    const wire = toJsonbinWire(record);
-    const id = wire.id;
-    if (!id) throw new Error('Record without id');
-
-    for (let attempt = 0; attempt < 3; attempt++) {
-      const current = await jsonbinFetchAll();
-      if (current.some(x => String(x.id) === id)) return true; // ya estaba
-
-      const next = current.concat([wire]);
-      try {
-        await jsonbinReplaceAll(next);
-      } catch (e) {
-        if (attempt === 2) throw e;
-        await new Promise(res => setTimeout(res, 400 + Math.random() * 600));
-        continue;
-      }
-
-      // Verificación tras el PUT — si una escritura concurrente nos pisó,
-      // nuestro id no aparecerá y reintentamos.
-      const verify = await jsonbinFetchAll();
-      if (verify.some(x => String(x.id) === id)) return true;
-      await new Promise(res => setTimeout(res, 300 + Math.random() * 500));
-    }
-    throw new Error('Could not push after 3 attempts');
-  }
-
   // --- Dispatch ---
-  // Front-end calls this. Tries Supabase first (the new robust backend), and
-  // only falls back to JSONBin if Supabase is unreachable AND JSONBin is still
-  // configured. Records are queued in localStorage if both fail.
+  // v1.7: único destino = Supabase (con timeout). Si falla o no responde, el
+  // llamador deja el registro como pendiente en localStorage y se reintenta
+  // automáticamente al recuperar conexión / volver a la pestaña.
   async function cloudPushRecord(record) {
-    if (isSupabaseConfigured()) {
-      try {
-        await supabasePushRecord(record);
-        return true;
-      } catch (supaErr) {
-        if (!isJsonbinConfigured()) throw supaErr;
-        // Log so we can spot regressions in console without breaking the UX.
-        try { console.warn('Supabase push failed, falling back to JSONBin:', supaErr); } catch (_) {}
-      }
-    }
-    return jsonbinPushRecord(record);
+    if (!isSupabaseConfigured()) throw new Error('Cloud not configured');
+    await supabasePushRecord(record);
+    return true;
   }
 
   function countPending() {
@@ -2588,7 +2338,7 @@
 
   async function initialSync() {
     records = loadLocal();
-    renderRecords();
+    refreshPendingBadge();
 
     if (!cloudConfigured) {
       setCloudStatus('local');
@@ -2633,10 +2383,12 @@
     }
   }
 
-  async function addRecord(record) {
+  // v1.7: guarda en la tablet de forma inmediata (síncrona) y devuelve. El envío
+  // al servidor ocurre en segundo plano (pushRecordInBackground). Así el piloto
+  // recibe la confirmación al instante aunque la red esté lenta o caída.
+  function addRecord(record) {
     records.unshift(Object.assign({ synced: false }, record));
     saveLocal(records);
-    renderRecords();
     refreshPendingBadge();
 
     if (!cloudConfigured) return;
@@ -2647,15 +2399,19 @@
     }
 
     setCloudStatus('syncing');
+    pushRecordInBackground(record);
+  }
+
+  async function pushRecordInBackground(record) {
     try {
       await cloudPushRecord(record);
       const r = records.find(x => x.id === record.id);
       if (r) r.synced = true;
       saveLocal(records);
-      renderRecords();
       const stillPending = countPending();
       setCloudStatus(stillPending > 0 ? 'offline' : 'synced');
     } catch (e) {
+      // Timeout o error de red: queda pendiente y se reintenta solo.
       setCloudStatus(isOnline() ? 'error' : 'offline');
     }
   }
@@ -2670,66 +2426,18 @@
     }, reason === 'online' ? 800 : 200);
   }
 
-  function clearLocal() {
-    records = [];
-    saveLocal(records);
-    renderRecords();
-  }
-
-  // ====================== Render ======================
-  function escapeHtml(s) {
-    return String(s == null ? '' : s)
-      .replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;')
-      .replace(/"/g, '&quot;').replace(/'/g, '&#39;');
-  }
-
-  function renderRecords() {
-    if (records.length === 0) {
-      recordsBody.innerHTML = '';
-      tableEl.style.display = 'none';
-      emptyState.style.display = '';
-      return;
-    }
-    tableEl.style.display = '';
-    emptyState.style.display = 'none';
-
-    const rows = records.map(r => {
-      const isOk = r.status === 'OK';
-      const isWrong = r.status === 'WRONG_LOAD';
-      const hasNums = isOk || isWrong;
-      const isPending = cloudConfigured && r.synced === false;
-      const range = hasNums
-        ? (fmtL(r.lowL) + ' – ' + fmtL(r.highL))
-        : '—';
-      let pill;
-      if (isOk) {
-        pill = '<span class="pill ok"><span class="d"></span>OK</span>';
-      } else if (isWrong) {
-        pill = '<span class="pill wrong-load"><span class="d"></span>Wrong load</span>';
-      } else {
-        pill = '<span class="pill no-info"><span class="d"></span>No GH info</span>';
-      }
-      const trClass = isPending ? ' class="row-pending" title="Pending cloud sync"' : '';
-      const pilotCell = r.pilotId ? escapeHtml(r.pilotId) : '<span style="color: var(--line-strong)">—</span>';
-      const depCell = r.departureAirport ? escapeHtml(r.departureAirport) : '<span style="color: var(--line-strong)">—</span>';
-      return '<tr' + trClass + '>' +
-        '<td>' + escapeHtml(r.dateTime) + '</td>' +
-        '<td class="flight">' + pilotCell + '</td>' +
-        '<td class="flight">' + escapeHtml(r.flight) + '</td>' +
-        '<td class="flight">' + depCell + '</td>' +
-        '<td>' + (hasNums ? fmtInt(r.frKg) : '—') + '</td>' +
-        '<td>' + (hasNums ? fmtInt(r.fobKg) : '—') + '</td>' +
-        '<td>' + (hasNums ? fmtInt(r.totalKg) : '—') + '</td>' +
-        '<td>' + (hasNums ? fmtDensity(r.density) : '—') + '</td>' +
-        '<td class="range">' + range + '</td>' +
-        '<td>' + pill + '</td>' +
-      '</tr>';
-    }).join('');
-    recordsBody.innerHTML = rows;
-  }
-
   // ====================== Actions ======================
-  async function handleSave() {
+  // v1.7: registrar = guardar local (instantáneo) + confirmar al piloto +
+  // bloquear botones un instante. El envío al servidor va en segundo plano.
+  function commitRecord(record) {
+    lockSubmit();
+    rememberPilotId();
+    addRecord(record);
+    showConfirm();
+  }
+
+  function handleSave() {
+    if (submitLocked) return;
     if (!validateForSave()) {
       const reason = !validatePilotName(getPilotId()).ok ? 'Enter your full name' : 'Please review the form';
       showToast(reason, 'warn');
@@ -2756,14 +2464,13 @@
       highL: c.high,
       status: 'OK'
     };
-    rememberPilotId();
     showToast('Load logged · ' + flight);
-    await addRecord(record);
-    showConfirm();
+    commitRecord(record);
   }
 
   // Mismo flujo que handleSave pero registra el evento como carga incorrecta.
-  async function handleWrongLoad() {
+  function handleWrongLoad() {
+    if (submitLocked) return;
     if (!validateForSave()) {
       const reason = !validatePilotName(getPilotId()).ok ? 'Enter your full name' : 'Please review the form';
       showToast(reason, 'warn');
@@ -2790,10 +2497,8 @@
       highL: c.high,
       status: 'WRONG_LOAD'
     };
-    rememberPilotId();
     showToast('Wrong load logged · ' + flight, 'warn');
-    await addRecord(record);
-    showConfirm();
+    commitRecord(record);
   }
 
   // Lista de campos que faltan para registrar "No info from GH":
@@ -2813,7 +2518,8 @@
     if (!DEPARTURE_AIRPORTS.includes(getDeparture()) && departureEl) { departureEl.focus(); }
   }
 
-  async function handleNoInfo() {
+  function handleNoInfo() {
+    if (submitLocked) return;
     if (!validateForNoInfo()) {
       const miss = missingForNoInfo();
       const msg = miss.length
@@ -2830,7 +2536,7 @@
 
   // Registra el incidente "No info from GH". reason = motivo elegido, o null
   // (null => se registra sin motivo, exactamente como antes).
-  async function logNoInfo(reason) {
+  function logNoInfo(reason) {
     const { flight, fr, fob, density } = readInputs();
     const now = new Date();
     const record = {
@@ -2850,85 +2556,8 @@
       status: 'NO_INFO',
       noInfoReason: reason || null
     };
-    rememberPilotId();
     showToast('Incident logged · ' + flight, 'warn');
-    await addRecord(record);
-    showConfirm();
-  }
-
-  // ====================== CSV ======================
-  function csvEscape(v) {
-    if (v == null) return '';
-    const s = String(v);
-    if (/[",;\n\r]/.test(s)) return '"' + s.replace(/"/g, '""') + '"';
-    return s;
-  }
-  function buildCsv(records) {
-    const headers = [
-      'Date/Time', 'ISO', 'Pilot ID', 'Flight', 'Departure Airport', 'FR (KG)', 'FOB (KG)', 'Total (KG)',
-      'Density (kg/L)', 'Total (L)', 'Low (L)', 'High (L)', 'Status', 'No-info Reason'
-    ];
-    const lines = [headers.join(';')];
-    records.forEach(r => {
-      let statusLabel;
-      if (r.status === 'OK') statusLabel = 'OK';
-      else if (r.status === 'WRONG_LOAD') statusLabel = 'Wrong load';
-      else statusLabel = 'No ground handler info';
-      lines.push([
-        r.dateTime,
-        r.iso,
-        r.pilotId || '',
-        r.flight,
-        r.departureAirport || '',
-        r.frKg != null ? r.frKg : '',
-        r.fobKg != null ? r.fobKg : '',
-        r.totalKg != null ? r.totalKg : '',
-        r.density != null ? r.density : '',
-        r.totalL != null ? r.totalL.toFixed(2) : '',
-        r.lowL  != null ? r.lowL.toFixed(2)  : '',
-        r.highL != null ? r.highL.toFixed(2) : '',
-        statusLabel,
-        r.noInfoReason || ''
-      ].map(csvEscape).join(';'));
-    });
-    return lines.join('\r\n');
-  }
-  function handleDownload() {
-    if (records.length === 0) {
-      showToast('No records to export', 'warn');
-      return;
-    }
-    const csv = '\uFEFF' + buildCsv(records);
-    const blob = new Blob([csv], { type: 'text/csv;charset=utf-8' });
-    const url = URL.createObjectURL(blob);
-    const a = document.createElement('a');
-    a.href = url;
-    a.download = 'viva_fuel_log_' + todayFile() + '.csv';
-    document.body.appendChild(a);
-    a.click();
-    document.body.removeChild(a);
-    setTimeout(() => URL.revokeObjectURL(url), 800);
-    showToast('CSV downloaded · ' + records.length + ' record' + (records.length === 1 ? '' : 's'));
-  }
-  function handleClear() {
-    if (records.length === 0) { showToast('No records', 'warn'); return; }
-    const msg = cloudConfigured
-      ? 'This only clears your local view. Records remain in the shared Sheet and will return on refresh. Continue?'
-      : 'You are about to delete ' + records.length + ' record' + (records.length === 1 ? '' : 's') + '. This action cannot be undone. Continue?';
-    const ok = window.confirm(msg);
-    if (!ok) return;
-    clearLocal();
-    showToast(cloudConfigured ? 'Local view cleared' : 'Records deleted', 'warn');
-  }
-  async function handleRefresh() {
-    if (!cloudConfigured) {
-      showToast('Cloud sync not configured', 'warn');
-      return;
-    }
-    await flushPending(false);
-    if (countPending() === 0) {
-      showToast('All records synced');
-    }
+    commitRecord(record);
   }
 
   // ====================== Clock ======================
@@ -2943,9 +2572,6 @@
   btnSave.addEventListener('click', handleSave);
   btnNoInfo.addEventListener('click', handleNoInfo);
   if (btnWrongLoad) btnWrongLoad.addEventListener('click', handleWrongLoad);
-  btnDownload.addEventListener('click', handleDownload);
-  btnClear.addEventListener('click', handleClear);
-  if (btnRefresh) btnRefresh.addEventListener('click', handleRefresh);
 
   // Cierre del modal de confirmación: botón X, tap en el backdrop, Escape.
   if (confirmCloseEl) confirmCloseEl.addEventListener('click', hideConfirm);
@@ -3014,16 +2640,6 @@
   });
 
   cloudConfigured = isCloudConfigured();
-  if (cloudConfigured) {
-    if (btnRefresh) btnRefresh.hidden = false;
-    if (recordsSubEl) {
-      recordsSubEl.textContent = 'You see your own loads on this device. Each save is also pushed automatically to the shared admin view.';
-    }
-  } else {
-    if (recordsSubEl) {
-      recordsSubEl.textContent = 'Records are stored on this device. Configure a JSONBin backend to share them with the admin view.';
-    }
-  }
 
   tickClock();
   setInterval(tickClock, 1000);

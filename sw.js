@@ -4,17 +4,21 @@
  *
  * Estrategia:
  *  - HTML / navegación → network-first con fallback a cache.
- *  - Fonts y assets externos → stale-while-revalidate.
- *  - JSONBin (api.jsonbin.io) → SIEMPRE network, nunca cache. Si falla, el
+ *  - Fonts y assets externos → stale-while-revalidate (caché compartido entre
+ *    versiones: v1.7 dejó de borrarlo en cada release, porque obligaba a
+ *    re-descargar las fuentes tras cada update y con red lenta la primera
+ *    apertura quedaba en blanco).
+ *  - Backend (Supabase / JSONBin) → SIEMPRE network, nunca cache. Si falla, el
  *    frontend lo encola en localStorage y reintenta cuando vuelve la conexión.
  *
  * Bumpá CACHE_VERSION cada vez que cambies index.html para forzar la
  * actualización en dispositivos que ya tienen una SW vieja instalada.
  */
 
-const CACHE_VERSION = 'viva-fuel-v20';
+const CACHE_VERSION = 'viva-fuel-v21';
 const SHELL_CACHE   = CACHE_VERSION + '-shell';
-const RUNTIME_CACHE = CACHE_VERSION + '-runtime';
+// Sin versión a propósito: sobrevive a los bumps de CACHE_VERSION.
+const RUNTIME_CACHE = 'viva-fuel-runtime';
 
 const SHELL_URLS = [
   './',
@@ -31,7 +35,11 @@ self.addEventListener('install', (event) => {
 self.addEventListener('activate', (event) => {
   event.waitUntil(
     caches.keys().then((keys) =>
-      Promise.all(keys.filter((k) => !k.startsWith(CACHE_VERSION)).map((k) => caches.delete(k)))
+      Promise.all(
+        keys
+          .filter((k) => k !== SHELL_CACHE && k !== RUNTIME_CACHE)
+          .map((k) => caches.delete(k))
+      )
     ).then(() => self.clients.claim())
   );
 });
