@@ -61,10 +61,11 @@ respetando `unit = metric`. Sin errores de JS.
 El estado previo quedó marcado con el tag **`v1.7-pre-units`** (commit `74220cc`)
 y copiado en `prod-backup-2026-09-28-v1.7/` del workspace (ver `README_ROLLBACK.md`).
 
-Opción A — revertir el commit de v1.8 (recomendada):
+Opción A — revertir el commit de v1.8 (recomendada). El commit de código de
+v1.8 es **`e58788c`**:
 
 ```bash
-git revert <commit-v1.8>
+git revert e58788c
 git push origin main
 ```
 
