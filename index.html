@@ -433,6 +433,44 @@
   }
   .field.has-error .field-error { display: block; }
 
+  /* v1.8: selector de unidades del ground handler (litros/kg/L vs US gal/lb/gal) */
+  .unit-toggle {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    flex-wrap: wrap;
+    margin-top: 2px;
+  }
+  .unit-seg {
+    display: inline-flex;
+    border: 1.5px solid var(--line);
+    border-radius: 999px;
+    overflow: hidden;
+    background: var(--surface-alt);
+  }
+  .unit-seg button {
+    appearance: none;
+    border: 0;
+    background: transparent;
+    padding: 0 14px;
+    min-height: 36px;
+    font-family: var(--font-mono);
+    font-size: 11px;
+    letter-spacing: 0.12em;
+    text-transform: uppercase;
+    font-weight: 700;
+    color: var(--muted);
+    cursor: pointer;
+    transition: background 120ms ease, color 120ms ease;
+  }
+  .unit-seg button[aria-pressed="true"] { background: var(--ink); color: white; }
+  .unit-seg button:focus-visible { outline: 2px solid var(--viva-green); outline-offset: -2px; }
+  .unit-note {
+    font-size: 12px;
+    color: var(--muted);
+  }
+  .unit-note.us { color: var(--viva-magenta-dark); font-weight: 600; }
+
   /* ======================== RESULTS PANEL ======================== */
   .calc-results {
     padding: 32px;
@@ -1156,7 +1194,7 @@
   <section aria-labelledby="calc-title">
     <div class="section-tag">01 · Calculation</div>
     <h1 id="calc-title" class="section-title">Fuel loading calculator</h1>
-    <p class="section-sub">Enter the flight number, FR/FOB in KG and the density reported by the ground handler. The system returns the range in liters you need to communicate.</p>
+    <p class="section-sub">Enter the flight number, FR/FOB in KG and the density reported by the ground handler. The system returns the range in liters you need to communicate — or in US gallons when departing from a US station.</p>
 
     <div class="card calc-card" style="margin-top: 18px;">
       <div class="calc-inputs">
@@ -1210,14 +1248,24 @@
 
           <div class="field" id="f-density">
             <label for="density">Density <span class="req" aria-hidden="true">*</span>
-              <span class="hint">— from ground handler · 0.770–0.840</span>
+              <span class="hint" id="densityHint">— from ground handler · 0.770–0.840</span>
             </label>
             <div class="input-wrap">
               <input id="density" type="text" inputmode="decimal"
                      autocomplete="off" placeholder="0.793" maxlength="5" />
-              <span class="unit">kg/L</span>
+              <span class="unit" id="densityUnit">kg/L</span>
             </div>
             <div class="field-error" data-default="Density must be between 0.770 and 0.840 kg/L (Jet A1).">Density must be between 0.770 and 0.840 kg/L (Jet A1).</div>
+            <!-- v1.8: unidades del ground handler. Se eligen solas según el
+                 aeropuerto (estaciones de EE. UU. -> galones y lb/gal) y el
+                 piloto siempre puede cambiarlas a mano. -->
+            <div class="unit-toggle" id="unitToggle" role="group" aria-label="Ground handler units">
+              <div class="unit-seg">
+                <button type="button" id="unitMetric" data-unit="metric" aria-pressed="true">Liters · kg/L</button>
+                <button type="button" id="unitUs" data-unit="us" aria-pressed="false">US gal · lb/gal</button>
+              </div>
+              <span class="unit-note" id="unitNote">Ground handler units</span>
+            </div>
           </div>
 
           <div class="field" id="f-fob">
@@ -1244,31 +1292,33 @@
             <div class="value"><span id="rTotalKg">—</span><span class="u">kg</span></div>
           </div>
           <div class="stat">
-            <div class="label">Liters (total)</div>
-            <div class="value"><span id="rTotalL">—</span><span class="u">L</span></div>
+            <div class="label" id="rTotalLabel">Liters (total)</div>
+            <div class="value"><span id="rTotalL">—</span><span class="u" id="rTotalUnit">L</span></div>
           </div>
         </div>
 
         <div class="range-card" id="rangeCard">
           <div class="range-head">
             <span class="tag">Range to communicate to ground handler</span>
+            <span class="badge" id="rangeUnitBadge" hidden>US gallons</span>
           </div>
           <div class="range-grid">
             <div class="range-num low">
               <span class="k">Low end</span>
               <span class="v" id="rLow">—</span>
-              <span class="u">liters</span>
+              <span class="u" id="rLowUnit">liters</span>
             </div>
             <div class="range-arrow" aria-hidden="true">↔</div>
             <div class="range-num high">
               <span class="k">High end</span>
               <span class="v" id="rHigh">—</span>
-              <span class="u">liters</span>
+              <span class="u" id="rHighUnit">liters</span>
             </div>
           </div>
           <div class="range-meta">
             <span>Operational tolerance · +200 kg</span>
             <span id="metaDensity">Density: —</span>
+            <span id="metaAlt" hidden></span>
           </div>
         </div>
 
@@ -1313,7 +1363,7 @@
 
 <footer class="foot">
   <div><span class="stripe" aria-hidden="true"></span> Viva Aerobus · Fuel Operations · Internal operational document</div>
-  <div id="buildInfo">v1.7 · offline-ready</div>
+  <div id="buildInfo">v1.8 · offline-ready</div>
 </footer>
 
 <div class="confirm-overlay" id="confirmOverlay" aria-modal="true" role="dialog" aria-label="Upload confirmed" hidden>
@@ -1374,6 +1424,19 @@
   const PUSH_TIMEOUT_MS = 8000;
   // v1.7: bloqueo breve tras registrar, para evitar doble toque -> duplicado.
   const SUBMIT_COOLDOWN_MS = 1500;
+  // v1.8: unidades de EE. UU. En estaciones US el ground handler factura en
+  // galones US y reporta la densidad en lb/gal. El avión (FR/FOB) sigue en kg.
+  // Internamente TODO se calcula en kg/L y litros (misma fórmula de siempre);
+  // solo se convierte a la entrada (densidad) y a la salida (resultado).
+  const L_PER_GAL      = 3.785411784;              // 1 US gallon en litros (exacto)
+  const LB_PER_KG      = 2.20462262;
+  const LBGAL_PER_KGL  = LB_PER_KG * L_PER_GAL;    // 1 kg/L = 8.3454 lb/gal
+  // Estaciones donde el ground handler usa unidades US (EE. UU. + Puerto Rico).
+  // BOG, HAV, CMW y SJO se quedan en litros por indicación del equipo.
+  const US_UNIT_AIRPORTS = [
+    'AUS','BFM','CVG','DEN','DFW','IAH','JFK','LAS','LAX','MCO','MIA','OAK',
+    'ORD','ROW','SAT','SEA','BQN'
+  ];
 
   // ====================== Backend compartido ======================
   // Supabase es el único backend de escritura (Postgres real, INSERTs atómicos,
@@ -1402,6 +1465,18 @@
   const rLow      = $('rLow');
   const rHigh     = $('rHigh');
   const metaDensity = $('metaDensity');
+  // v1.8: elementos que cambian con la unidad (L vs US gal)
+  const rTotalLabel   = $('rTotalLabel');
+  const rTotalUnit    = $('rTotalUnit');
+  const rLowUnit      = $('rLowUnit');
+  const rHighUnit     = $('rHighUnit');
+  const rangeUnitBadge = $('rangeUnitBadge');
+  const metaAlt       = $('metaAlt');
+  const densityHintEl = $('densityHint');
+  const densityUnitEl = $('densityUnit');
+  const unitMetricBtn = $('unitMetric');
+  const unitUsBtn     = $('unitUs');
+  const unitNoteEl    = $('unitNote');
 
   const btnSave     = $('btnSave');
   const btnNoInfo   = $('btnNoInfo');
@@ -1659,7 +1734,131 @@
   const DENSITY_MIN = 0.770;
   const DENSITY_MAX = 0.840;
   const DENSITY_RE  = /^0\.[0-9]{1,3}$/;
+  // v1.8: mismos límites físicos (Jet A1) expresados en lb/gal, redondeados
+  // hacia adentro para que al convertir a kg/L siempre caigan en 0.770–0.840.
+  const DENSITY_MIN_LBGAL = 6.43;
+  const DENSITY_MAX_LBGAL = 7.01;
+  const DENSITY_RE_LBGAL  = /^[0-9]\.[0-9]{1,3}$/;
   const FLIGHT_RE   = /^[A-Z]{2,3}[0-9]{1,4}$/;
+
+  // ====================== v1.8: Unidades (metric | us) ======================
+  // 'metric' = litros y kg/L (default, todas las estaciones MX/LatAm).
+  // 'us'     = galones US y lb/gal (estaciones de EE. UU. y Puerto Rico).
+  // Se elige sola al escribir el aeropuerto; el piloto puede cambiarla a mano
+  // con el interruptor y esa elección manual dura hasta que cambie el aeropuerto.
+  let unitSystem = 'metric';
+  let unitSource = 'auto';          // 'auto' | 'manual' (solo informativo)
+  let lastUnitAirport = '';         // último aeropuerto válido que fijó la unidad
+
+  function isUsUnits() { return unitSystem === 'us'; }
+  function unitForAirport(code) {
+    return US_UNIT_AIRPORTS.includes(code) ? 'us' : 'metric';
+  }
+  // Densidad tal como la tipeó el piloto -> kg/L (lo que usa la fórmula).
+  function densityToKgL(entered) {
+    return isUsUnits() ? entered / LBGAL_PER_KGL : entered;
+  }
+  // Litros (lo que calcula la fórmula) -> unidad que se muestra al piloto.
+  function litersToDisplay(liters) {
+    return isUsUnits() ? liters / L_PER_GAL : liters;
+  }
+  // Límites/formato de densidad en la unidad activa (para validar y mensajes).
+  function densityRules() {
+    if (isUsUnits()) {
+      return {
+        min: DENSITY_MIN_LBGAL, max: DENSITY_MAX_LBGAL, re: DENSITY_RE_LBGAL,
+        unit: 'lb/gal', decimals: 2, placeholder: '6.70',
+        hint: '— from ground handler · 6.43–7.01 lb/gal',
+        formatMsg: 'Use format x.xx (e.g. 6.70).',
+        rangeMsg:  'Must be between 6.43 and 7.01 lb/gal.',
+        requiredMsg: 'Density must be between 6.43 and 7.01 lb/gal (Jet A).'
+      };
+    }
+    return {
+      min: DENSITY_MIN, max: DENSITY_MAX, re: DENSITY_RE,
+      unit: 'kg/L', decimals: 3, placeholder: '0.793',
+      hint: '— from ground handler · 0.770–0.840',
+      formatMsg: 'Use format 0.xxx (e.g. 0.812).',
+      rangeMsg:  'Must be between 0.770 and 0.840 kg/L.',
+      requiredMsg: 'Density must be between 0.770 and 0.840 kg/L (Jet A1).'
+    };
+  }
+  // ¿El texto del campo densidad es válido en la unidad activa?
+  function isDensityRawValid(raw) {
+    const R = densityRules();
+    if (!raw || !R.re.test(raw)) return false;
+    const n = parseFloat(raw);
+    return Number.isFinite(n) && n >= R.min && n <= R.max;
+  }
+  function densityErrorFor(raw) {
+    const R = densityRules();
+    if (!raw) return 'Density is required.';
+    if (!R.re.test(raw)) return R.formatMsg;
+    const n = parseFloat(raw);
+    if (!Number.isFinite(n) || n < R.min || n > R.max) return R.rangeMsg;
+    return null;
+  }
+
+  // Cambia la unidad activa. Si hay una densidad válida tipeada, la convierte
+  // para no obligar al piloto a volver a escribirla (peras con peras).
+  function setUnitSystem(next, source) {
+    if (next !== 'metric' && next !== 'us') return;
+    const prev = unitSystem;
+    if (prev !== next) {
+      const raw = (densityEl.value || '').trim();
+      const n = parseFloat(raw);
+      let converted = '';
+      if (isDensityRawValid(raw) && Number.isFinite(n)) {
+        converted = next === 'us'
+          ? (n * LBGAL_PER_KGL).toFixed(2)
+          : (n / LBGAL_PER_KGL).toFixed(3);
+      }
+      unitSystem = next;
+      densityEl.value = converted;
+      setError('f-density', false);
+    }
+    unitSource = source || 'auto';
+    renderUnitUi();
+    updateLive();
+    syncSubmitState();
+  }
+  function renderUnitUi() {
+    const us = isUsUnits();
+    const R = densityRules();
+    if (unitMetricBtn) unitMetricBtn.setAttribute('aria-pressed', String(!us));
+    if (unitUsBtn)     unitUsBtn.setAttribute('aria-pressed', String(us));
+    if (densityHintEl) densityHintEl.textContent = R.hint;
+    if (densityUnitEl) densityUnitEl.textContent = R.unit;
+    densityEl.placeholder = R.placeholder;
+    const fieldErr = document.querySelector('#f-density .field-error');
+    if (fieldErr) fieldErr.setAttribute('data-default', R.requiredMsg);
+    if (unitNoteEl) {
+      unitNoteEl.classList.toggle('us', us);
+      if (unitSource === 'manual') {
+        unitNoteEl.textContent = us ? 'Manual · US gallons & lb/gal' : 'Manual · liters & kg/L';
+      } else if (us) {
+        unitNoteEl.textContent = 'US station · gallons & lb/gal';
+      } else {
+        unitNoteEl.textContent = 'Ground handler units';
+      }
+    }
+    if (rTotalLabel) rTotalLabel.textContent = us ? 'US gallons (total)' : 'Liters (total)';
+    if (rTotalUnit)  rTotalUnit.textContent  = us ? 'gal' : 'L';
+    if (rLowUnit)    rLowUnit.textContent    = us ? 'US gal' : 'liters';
+    if (rHighUnit)   rHighUnit.textContent   = us ? 'US gal' : 'liters';
+    if (rangeUnitBadge) rangeUnitBadge.hidden = !us;
+  }
+  // Al fijar un aeropuerto válido distinto al anterior, la unidad se elige sola.
+  function applyAirportUnits() {
+    const dep = getDeparture();
+    if (!DEPARTURE_AIRPORTS.includes(dep) || dep === lastUnitAirport) return;
+    lastUnitAirport = dep;
+    const next = unitForAirport(dep);
+    const changed = next !== unitSystem;
+    setUnitSystem(next, 'auto');
+    if (changed && next === 'us') showToast('US station · switched to US gallons & lb/gal');
+    if (changed && next === 'metric') showToast('Switched back to liters & kg/L');
+  }
 
   function parseIntSafe(raw) {
     if (raw == null) return NaN;
@@ -1671,12 +1870,15 @@
     if (!Number.isFinite(n)) return '';
     return n.toLocaleString('en-US');
   }
+  // density = SIEMPRE en kg/L (convertida si el piloto está en lb/gal), así la
+  // fórmula y el registro no cambian. densityEntered = número tal cual tipeado.
   function readInputs() {
     const flight  = (flightEl.value || '').trim().toUpperCase().replace(/\s+/g, '');
     const fr      = parseIntSafe(frEl.value);
     const fob     = parseIntSafe(fobEl.value);
-    const density = parseFloat((densityEl.value || '').trim());
-    return { flight, fr, fob, density };
+    const densityEntered = parseFloat((densityEl.value || '').trim());
+    const density = Number.isFinite(densityEntered) ? densityToKgL(densityEntered) : NaN;
+    return { flight, fr, fob, density, densityEntered };
   }
 
   function compute({ fr, fob, density }) {
@@ -1697,14 +1899,17 @@
   }
 
   function updateLive() {
-    const { density } = readInputs();
-    const result = compute(readInputs());
+    const inputs = readInputs();
+    const { density, densityEntered } = inputs;
+    const result = compute(inputs);
+    const us = isUsUnits();
 
     if (result) {
       rTotalKg.textContent = fmtInt(result.totalKg);
-      rTotalL.textContent  = fmtL(result.totalL);
-      rLow.textContent     = fmtL(result.low);
-      rHigh.textContent    = fmtL(result.high);
+      // v1.8: la fórmula devuelve litros; en estaciones US se muestran galones.
+      rTotalL.textContent  = fmtL(litersToDisplay(result.totalL));
+      rLow.textContent     = fmtL(litersToDisplay(result.low));
+      rHigh.textContent    = fmtL(litersToDisplay(result.high));
       [rTotalKg, rTotalL, rLow, rHigh].forEach(el => {
         el.classList.remove('pop');
         // force reflow to retrigger animation
@@ -1717,9 +1922,24 @@
       rLow.textContent     = '—';
       rHigh.textContent    = '—';
     }
-    metaDensity.textContent = Number.isFinite(density) && density > 0
-      ? 'Density: ' + fmtDensity(density) + ' kg/L'
-      : 'Density: —';
+    if (us) {
+      // Densidad tal como la dio el ground handler + su equivalente en kg/L.
+      metaDensity.textContent = Number.isFinite(densityEntered) && densityEntered > 0
+        ? 'Density: ' + fmtNumber(densityEntered, 2) + ' lb/gal (' + fmtDensity(density) + ' kg/L)'
+        : 'Density: —';
+      // Equivalente en litros, por si el piloto quiere la referencia habitual.
+      if (metaAlt) {
+        metaAlt.hidden = !result;
+        metaAlt.textContent = result
+          ? '≈ ' + fmtL(result.low) + ' – ' + fmtL(result.high) + ' L'
+          : '';
+      }
+    } else {
+      metaDensity.textContent = Number.isFinite(density) && density > 0
+        ? 'Density: ' + fmtDensity(density) + ' kg/L'
+        : 'Density: —';
+      if (metaAlt) { metaAlt.hidden = true; metaAlt.textContent = ''; }
+    }
   }
 
   // -------- Flight: solo A-Z y dígitos, mayúsculas, máx 7 chars --------
@@ -1759,6 +1979,7 @@
         airportSuggestionsEl.hidden = true;
         acActiveIdx = -1;
         setError('f-departure', false);
+        applyAirportUnits();
         syncSubmitState();
         frEl.focus();
       });
@@ -1774,6 +1995,8 @@
       if (departureEl.value !== cleaned) departureEl.value = cleaned;
       const q = cleaned;
       setError('f-departure', false);
+      // v1.8: con 3 letras válidas la unidad se fija sola (US -> galones).
+      applyAirportUnits();
       syncSubmitState();
       if (!q) { acClose(); return; }
       acOpen(DEPARTURE_AIRPORTS.filter(c => c.includes(q)));
@@ -1801,6 +2024,7 @@
           departureEl.value = items[acActiveIdx].textContent.trim();
           acClose();
           setError('f-departure', false);
+          applyAirportUnits();
           syncSubmitState();
           frEl.focus();
         } else {
@@ -1815,6 +2039,7 @@
       setTimeout(acClose, 150);
       markIfInvalid('f-departure', (v) =>
         DEPARTURE_AIRPORTS.includes(v) ? null : 'Please select a valid departure airport.');
+      applyAirportUnits();
       syncSubmitState();
     });
     departureEl.addEventListener('focus', () => {
@@ -1898,17 +2123,19 @@
     if (!v) { syncSubmitState(); return; }
     let fixed = v;
     if (/^\.[0-9]+$/.test(fixed)) fixed = '0' + fixed;
-    if (/^0\.?$/.test(fixed)) fixed = '';
+    if (/^[0-9]\.?$/.test(fixed)) fixed = '';
     densityEl.value = fixed;
-    markIfInvalid('f-density', (val) => {
-      if (!DENSITY_RE.test(val)) return 'Use format 0.xxx (e.g. 0.812).';
-      const n = parseFloat(val);
-      if (!Number.isFinite(n) || n < DENSITY_MIN || n > DENSITY_MAX) {
-        return 'Must be between 0.770 and 0.840 kg/L.';
-      }
-      return null;
-    });
+    // v1.8: formato y rango dependen de la unidad activa (kg/L o lb/gal).
+    markIfInvalid('f-density', (val) => densityErrorFor(val));
     syncSubmitState();
+  });
+
+  // v1.8: interruptor manual de unidades (siempre visible).
+  [unitMetricBtn, unitUsBtn].forEach((btn) => {
+    if (!btn) return;
+    btn.addEventListener('click', () => {
+      setUnitSystem(btn.getAttribute('data-unit'), 'manual');
+    });
   });
 
   // -------- Pilot name: sanitizar en input, Title Case en blur --------
@@ -1990,16 +2217,11 @@
       ok = false;
     }
 
-    // 5) Density (decimal 0.770..0.840, con cero inicial)
+    // 5) Density: formato y rango según la unidad activa (kg/L o lb/gal). v1.8
     const densityRaw = (densityEl.value || '').trim();
-    if (!densityRaw) {
-      setError('f-density', true, 'Density is required.');
-      ok = false;
-    } else if (!DENSITY_RE.test(densityRaw)) {
-      setError('f-density', true, 'Use format 0.xxx (e.g. 0.812).');
-      ok = false;
-    } else if (!Number.isFinite(density) || density < DENSITY_MIN || density > DENSITY_MAX) {
-      setError('f-density', true, 'Density must be between 0.770 and 0.840 kg/L.');
+    const densityErr = densityErrorFor(densityRaw);
+    if (densityErr || !Number.isFinite(density)) {
+      setError('f-density', true, densityErr || densityRules().requiredMsg);
       ok = false;
     }
 
@@ -2046,9 +2268,8 @@
     if (!Number.isFinite(fr) || fr < INT_MIN || fr > INT_MAX) return false;
     if (!Number.isFinite(fob) || fob < INT_MIN || fob > INT_MAX) return false;
     if (fob <= fr) return false;
-    const densityRaw = (densityEl.value || '').trim();
-    if (!densityRaw || !DENSITY_RE.test(densityRaw)) return false;
-    if (!Number.isFinite(density) || density < DENSITY_MIN || density > DENSITY_MAX) return false;
+    if (!isDensityRawValid((densityEl.value || '').trim())) return false;
+    if (!Number.isFinite(density)) return false;
     return true;
   }
   function isMinFormValidForNoInfo() {
@@ -2065,9 +2286,7 @@
     if (!flight || !FLIGHT_RE.test(flight)) miss.push('flight number');
     if (!DEPARTURE_AIRPORTS.includes(getDeparture())) miss.push('departure airport');
     if (!Number.isFinite(fr) || fr < INT_MIN || fr > INT_MAX) miss.push('FR');
-    const densityRaw = (densityEl.value || '').trim();
-    if (!densityRaw || !DENSITY_RE.test(densityRaw) || !Number.isFinite(density)
-        || density < DENSITY_MIN || density > DENSITY_MAX) miss.push('density');
+    if (!isDensityRawValid((densityEl.value || '').trim()) || !Number.isFinite(density)) miss.push('density');
     if (!Number.isFinite(fob) || fob < INT_MIN || fob > INT_MAX) miss.push('FOB');
     else if (Number.isFinite(fr) && fob <= fr) miss.push('FOB ≥ FR');
     return miss;
@@ -2207,10 +2426,14 @@
   }
 
   // --- Supabase wire (Postgres usa snake_case, el frontend camelCase) ---
-  // Si Supabase todavía no tiene la columna no_info_reason, este flag se enciende
-  // (en memoria, por sesión) tras el primer INSERT que la rechace, para no volver
-  // a mandarla. Se resetea al recargar, así se auto-recupera cuando la agreguen.
-  let supaReasonColMissing = false;
+  // Columnas OPCIONALES: si Supabase todavía no las tiene, el primer INSERT que
+  // las rechace (400) enciende este flag (en memoria, por sesión) y se reintenta
+  // sin ellas. Se resetea al recargar, así se auto-recupera cuando las agreguen.
+  //   - no_info_reason: motivo del "No info from GH".
+  //   - unit (v1.8): 'us' cuando el piloto registró en galones/lb/gal. Solo se
+  //     manda en ese caso; los registros en litros viajan idénticos a antes.
+  const SUPABASE_OPTIONAL_COLS = ['no_info_reason', 'unit'];
+  let supaOptionalColsMissing = false;
 
   function toSupabaseWire(r) {
     const wire = {
@@ -2229,10 +2452,11 @@
       status:    r.status || 'OK',
       device:    (typeof navigator !== 'undefined' && navigator.platform) || ''
     };
-    // Solo agregamos el motivo cuando existe (registros "No info" con motivo).
-    // Los demás registros viajan idénticos a antes -> cero riesgo.
-    if (!supaReasonColMissing && r.noInfoReason) {
-      wire.no_info_reason = r.noInfoReason;
+    // Solo agregamos las columnas opcionales cuando traen algo. Los demás
+    // registros viajan idénticos a antes -> cero riesgo.
+    if (!supaOptionalColsMissing) {
+      if (r.noInfoReason) wire.no_info_reason = r.noInfoReason;
+      if (r.unit === 'us') wire.unit = 'us';
     }
     return wire;
   }
@@ -2260,13 +2484,13 @@
       cache: 'no-store'
     }, PUSH_TIMEOUT_MS);
     let r = await doPost(wire);
-    // Resiliencia: si la columna no_info_reason todavía no existe en Supabase,
-    // el INSERT devuelve 400. En ese caso reintentamos SIN el motivo para que el
-    // registro igual se guarde (nunca se pierde ni se cae el logueo). El motivo
-    // queda en localStorage/CSV y empezará a persistir apenas agreguen la columna.
-    if (!r.ok && r.status === 400 && 'no_info_reason' in wire) {
-      supaReasonColMissing = true;
-      delete wire.no_info_reason;
+    // Resiliencia: si alguna columna opcional todavía no existe en Supabase,
+    // el INSERT devuelve 400. En ese caso reintentamos SIN esas columnas para
+    // que el registro igual se guarde (nunca se pierde ni se cae el logueo).
+    // El dato queda en localStorage y persistirá apenas agreguen la columna.
+    if (!r.ok && r.status === 400 && SUPABASE_OPTIONAL_COLS.some((c) => c in wire)) {
+      supaOptionalColsMissing = true;
+      SUPABASE_OPTIONAL_COLS.forEach((c) => { delete wire[c]; });
       r = await doPost(wire);
     }
     if (!r.ok) throw new Error('Supabase POST ' + r.status);
@@ -2444,10 +2668,12 @@
       if (!validatePilotName(getPilotId()).ok && pilotIdEl) pilotIdEl.focus();
       return;
     }
-    const { flight, fr, fob, density } = readInputs();
+    const { flight, fr, fob, density, densityEntered } = readInputs();
     const c = compute({ fr, fob, density });
     if (!c) { showToast('Cannot calculate', 'warn'); return; }
     const now = new Date();
+    // v1.8: density/totalL/lowL/highL SIEMPRE en kg/L y litros (igual que
+    // siempre). unit + densityEntered dejan constancia de cómo se capturó.
     const record = {
       id: now.getTime(),
       dateTime: fmtDateTime(now),
@@ -2462,7 +2688,9 @@
       totalL: c.totalL,
       lowL: c.low,
       highL: c.high,
-      status: 'OK'
+      status: 'OK',
+      unit: unitSystem,
+      densityEntered: densityEntered
     };
     showToast('Load logged · ' + flight);
     commitRecord(record);
@@ -2477,7 +2705,7 @@
       if (!validatePilotName(getPilotId()).ok && pilotIdEl) pilotIdEl.focus();
       return;
     }
-    const { flight, fr, fob, density } = readInputs();
+    const { flight, fr, fob, density, densityEntered } = readInputs();
     const c = compute({ fr, fob, density });
     if (!c) { showToast('Cannot calculate', 'warn'); return; }
     const now = new Date();
@@ -2495,7 +2723,9 @@
       totalL: c.totalL,
       lowL: c.low,
       highL: c.high,
-      status: 'WRONG_LOAD'
+      status: 'WRONG_LOAD',
+      unit: unitSystem,
+      densityEntered: densityEntered
     };
     showToast('Wrong load logged · ' + flight, 'warn');
     commitRecord(record);
@@ -2554,7 +2784,8 @@
       lowL: null,
       highL: null,
       status: 'NO_INFO',
-      noInfoReason: reason || null
+      noInfoReason: reason || null,
+      unit: unitSystem
     };
     showToast('Incident logged · ' + flight, 'warn');
     commitRecord(record);
@@ -2644,6 +2875,7 @@
   tickClock();
   setInterval(tickClock, 1000);
   loadPilotId();
+  renderUnitUi();
   updateLive();
   syncSubmitState();
   initialSync();

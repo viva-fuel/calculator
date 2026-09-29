@@ -5,6 +5,82 @@ Cada versión publicada en `main` es lo que sirve GitHub Pages.
 
 ---
 
+## v1.8 — 2026-09-28 · Unidades de EE. UU. (galones US y lb/gal)
+
+**Motivo.** En estaciones de EE. UU. el ground handler factura en galones US y
+reporta la densidad en lb/gal; la calculadora solo hablaba litros y kg/L, así
+que el piloto tenía que convertir a mano. El avión (FR/FOB) sigue en kg.
+
+**Regla.** La fórmula **no cambia** (`(kg + 200) / densidad`, ±1.75 %). Solo se
+convierte a la entrada y a la salida: la densidad tipeada en lb/gal se pasa a
+kg/L antes de calcular, y los litros resultantes se muestran en galones US.
+
+- 1 US gal = 3.785411784 L · 1 kg/L = 8.3454 lb/gal.
+- Rango válido de densidad en lb/gal: **6.43–7.01** (equivale a 0.770–0.840 kg/L).
+- Estaciones en unidades US: AUS, BFM, CVG, DEN, DFW, IAH, JFK, LAS, LAX, MCO,
+  MIA, OAK, ORD, ROW, SAT, SEA y BQN (Puerto Rico). **BOG, HAV, CMW y SJO se
+  quedan en litros** por indicación del equipo.
+
+**Cambios en `index.html`:**
+
+| # | Cambio | Riesgo | Detalle |
+|---|--------|--------|---------|
+| 1 | Selección automática de unidades por aeropuerto (`US_UNIT_AIRPORTS`, `applyAirportUnits`) | Bajo | Al quedar fijado un código válido, la unidad se elige sola. Toast "US station · switched to US gallons & lb/gal". Cambiar de aeropuerto vuelve a elegir sola (borra la elección manual). |
+| 2 | Interruptor manual **Liters · kg/L / US gal · lb/gal** siempre visible, bajo el campo Density | Bajo | El piloto puede forzar la unidad en cualquier estación. Si ya había una densidad válida tipeada, se convierte (0.800 ↔ 6.68) para no obligar a reescribirla. |
+| 3 | Campo Density con unidad, rango, placeholder y mensajes de error según la unidad activa (`densityRules`, `densityErrorFor`, `isDensityRawValid`) | Bajo | En lb/gal: formato `x.xx`, rango 6.43–7.01. En kg/L: idéntico a antes. |
+| 4 | Resultado en galones US cuando aplica: total, low end, high end, badge "US gallons", densidad mostrada en ambas unidades y equivalente en litros en chico | Bajo | En litros la pantalla es idéntica a v1.7. |
+| 5 | `readInputs()` devuelve `density` **siempre en kg/L** (+ `densityEntered` tal como se tipeó) | Muy bajo | `compute()`, los registros y la base siguen en kg/L y litros. Ningún número almacenado cambia de unidad. |
+| 6 | Registro local con `unit` (`metric`/`us`) y `densityEntered`; a Supabase se manda `unit: 'us'` solo en registros US, como **columna opcional** | Muy bajo | Si la columna `unit` no existe (hoy no existe), el INSERT devuelve 400 y se reintenta sin ella: el registro se guarda igual. Mismo mecanismo que `no_info_reason`. Cuando se agregue la columna, empieza a persistir sola. |
+| 7 | Footer `v1.8` | — | |
+
+**Cambios en `admin.html`:**
+
+| # | Cambio | Riesgo | Detalle |
+|---|--------|--------|---------|
+| 8 | Registros de estaciones US: etiqueta **US** junto al aeropuerto y, debajo de Density / Total (L) / Range (L), el equivalente en lb/gal y galones US (`unitOfRecord`, `.us-alt`) | Bajo | Los valores en litros no se tocan. Si existe la columna `unit` se respeta (un registro en litros desde JFK no muestra galones); si no, se deduce del aeropuerto. |
+| 9 | CSV y Excel: 5 columnas nuevas **al final** (`GH Units`, `Density (lb/gal)`, `Total (US gal)`, `Low (US gal)`, `High (US gal)`) | Bajo | Vacías en registros en litros. Van al final para no romper la importación de CSVs anteriores. |
+
+**Cambios en `sw.js`:** `CACHE_VERSION` → `viva-fuel-v22`.
+
+**Pendiente (requiere acceso al dashboard de Supabase):**
+`ALTER TABLE fuel_records ADD COLUMN unit text;` — hasta entonces, la unidad se
+deduce del aeropuerto en el admin y el primer registro US de cada sesión hace un
+POST extra (el 400 + reintento).
+
+**Validación.** 58 comprobaciones automatizadas con Playwright sobre `dist/` con
+Supabase interceptado: cálculo en litros idéntico a v1.7 (MEX); JFK → galones
+con conversión exacta (0.800 → 6.68 lb/gal, 5,250 L → 1,386 gal); POST con
+`unit: 'us'`, densidad en kg/L y litros; 400 simulado → reintento sin `unit` →
+registro *synced*; interruptor manual (con conversión de la densidad) y reset al
+cambiar de aeropuerto; BOG en litros, BQN en galones; validación de rango en
+lb/gal; Wrong load con `unit`; admin con sub-línea US solo en filas US y
+respetando `unit = metric`. Sin errores de JS.
+
+### Cómo volver a v1.7 (rollback exacto)
+
+El estado previo quedó marcado con el tag **`v1.7-pre-units`** (commit `74220cc`)
+y copiado en `prod-backup-2026-09-28-v1.7/` del workspace (ver `README_ROLLBACK.md`).
+
+Opción A — revertir el commit de v1.8 (recomendada):
+
+```bash
+git revert <commit-v1.8>
+git push origin main
+```
+
+Opción B — restaurar los archivos tal cual estaban:
+
+```bash
+git checkout v1.7-pre-units -- index.html admin.html sw.js README.md
+git commit -m "revert: back to v1.7 (pre-units)"
+git push origin main
+```
+
+Si se restaura `sw.js` de v1.7 (`CACHE_VERSION = viva-fuel-v21`), subir a `v23`
+para forzar la actualización en las tablets.
+
+---
+
 ## v1.7 — 2026-09-23 · Performance con red lenta + se quita "Load history"
 
 **Motivo.** Pilotos reportaron la calculadora "lenta / trabada". El diagnóstico

@@ -437,6 +437,27 @@
     color: var(--viva-green-dark);
     white-space: nowrap;
   }
+  /* v1.8: equivalente en unidades US (galones / lb/gal) bajo el valor en litros */
+  table.records .us-alt {
+    display: block;
+    font-family: var(--font-mono);
+    font-size: 10.5px;
+    font-weight: 600;
+    color: var(--viva-magenta-dark);
+    white-space: nowrap;
+    margin-top: 2px;
+  }
+  table.records .us-tag {
+    display: inline-block;
+    font-size: 9px;
+    letter-spacing: 0.12em;
+    padding: 1px 5px;
+    border-radius: 4px;
+    background: var(--viva-magenta-dark);
+    color: white;
+    vertical-align: middle;
+    margin-left: 4px;
+  }
   .pill {
     display: inline-flex;
     align-items: center;
@@ -954,6 +975,32 @@
   const SUPABASE_ANON_KEY = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImJwYnJ2ZXBzcnNjYWtoZnNlcmZiIiwicm9sZSI6ImFub24iLCJpYXQiOjE3Nzk3NDQzODgsImV4cCI6MjA5NTMyMDM4OH0.Wo9WcwPDjWVKvXSoCf97DKHpM7-_1mGFEwcWpatEUQI';
   const SUPABASE_TABLE    = 'fuel_records';
 
+  // v1.8: unidades US. La base guarda SIEMPRE litros y kg/L; en estaciones de
+  // EE. UU./Puerto Rico el admin muestra además galones US y lb/gal, que es lo
+  // que el ground handler factura allá. Debe coincidir con index.html.
+  const L_PER_GAL     = 3.785411784;
+  const LBGAL_PER_KGL = 2.20462262 * L_PER_GAL; // 8.3454
+  const US_UNIT_AIRPORTS = [
+    'AUS','BFM','CVG','DEN','DFW','IAH','JFK','LAS','LAX','MCO','MIA','OAK',
+    'ORD','ROW','SAT','SEA','BQN'
+  ];
+  // 'us' si el registro se capturó en galones (columna unit, cuando exista) o,
+  // si la columna no existe todavía, si la estación de salida es US.
+  function unitOfRecord(r) {
+    if (r.unit === 'us' || r.unit === 'metric') return r.unit;
+    return US_UNIT_AIRPORTS.includes(r.departureAirport) ? 'us' : 'metric';
+  }
+  function litersToGal(l) { return Number.isFinite(l) ? l / L_PER_GAL : NaN; }
+  function kglToLbGal(d)  { return Number.isFinite(d) ? d * LBGAL_PER_KGL : NaN; }
+  function fmtGal(n) {
+    if (!Number.isFinite(n)) return '—';
+    return n.toLocaleString('en-US', { minimumFractionDigits: 1, maximumFractionDigits: 1 });
+  }
+  function fmtLbGal(n) {
+    if (!Number.isFinite(n)) return '—';
+    return n.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
+  }
+
   function isSupabaseConfigured() {
     return typeof SUPABASE_URL === 'string' && /^https:\/\//.test(SUPABASE_URL)
         && typeof SUPABASE_ANON_KEY === 'string' && SUPABASE_ANON_KEY.length >= 40;
@@ -1182,6 +1229,7 @@
       highL:     row.high_l  != null ? Number(row.high_l)  : null,
       status:    row.status,
       noInfoReason: row.no_info_reason || '',
+      unit:      row.unit || null,   // v1.8: 'us' | null (columna opcional)
       device:    row.device
     };
   }
@@ -1747,17 +1795,28 @@
       } else {
         pill = '<span class="pill no-info"><span class="d"></span>No GH info</span>';
       }
+      // v1.8: en estaciones US se agrega debajo el equivalente en galones y
+      // lb/gal (lo que factura el ground handler allá). La base sigue en litros.
+      const isUs = unitOfRecord(r) === 'us';
+      const usDensity = (isUs && Number.isFinite(r.density))
+        ? '<span class="us-alt">' + fmtLbGal(kglToLbGal(r.density)) + ' lb/gal</span>' : '';
+      const usTotal = (isUs && Number.isFinite(r.totalL))
+        ? '<span class="us-alt">' + fmtGal(litersToGal(r.totalL)) + ' gal</span>' : '';
+      const usRange = (isUs && Number.isFinite(r.lowL) && Number.isFinite(r.highL))
+        ? '<span class="us-alt">' + fmtGal(litersToGal(r.lowL)) + ' – ' + fmtGal(litersToGal(r.highL)) + ' gal</span>' : '';
+      const airportCell = escapeHtml(r.departureAirport || '—')
+        + (isUs ? ' <span class="us-tag" title="US units: gallons & lb/gal">US</span>' : '');
       return '<tr>' +
         '<td>' + escapeHtml(fmtDateTime(r.timestamp)) + '</td>' +
         '<td class="pilot">' + escapeHtml(r.pilotId || '—') + '</td>' +
         '<td class="flight">' + escapeHtml(r.flight || '—') + '</td>' +
-        '<td class="flight">' + escapeHtml(r.departureAirport || '—') + '</td>' +
+        '<td class="flight">' + airportCell + '</td>' +
         '<td>' + (Number.isFinite(r.frKg)    ? fmtInt(r.frKg)    : '—') + '</td>' +
         '<td>' + (Number.isFinite(r.fobKg)   ? fmtInt(r.fobKg)   : '—') + '</td>' +
         '<td>' + (Number.isFinite(r.totalKg) ? fmtInt(r.totalKg) : '—') + '</td>' +
-        '<td>' + (Number.isFinite(r.density) ? fmtDensity(r.density) : '—') + '</td>' +
-        '<td>' + (Number.isFinite(r.totalL)  ? fmtL(r.totalL)    : '—') + '</td>' +
-        '<td class="range">' + range + '</td>' +
+        '<td>' + (Number.isFinite(r.density) ? fmtDensity(r.density) : '—') + usDensity + '</td>' +
+        '<td>' + (Number.isFinite(r.totalL)  ? fmtL(r.totalL)    : '—') + usTotal + '</td>' +
+        '<td class="range">' + range + usRange + '</td>' +
         '<td>' + pill + '</td>' +
         '<td>' + escapeHtml(r.noInfoReason || '—') + '</td>' +
       '</tr>';
@@ -1773,9 +1832,12 @@
     return s;
   }
   function buildCsv(arr) {
+    // v1.8: columnas US al FINAL para no romper la importación de CSVs viejos.
+    // Solo se llenan en registros de estaciones US; el resto queda vacío.
     const headers = [
       'Date/Time', 'ISO', 'Pilot ID', 'Flight', 'Departure Airport', 'FR (KG)', 'FOB (KG)', 'Total (KG)',
-      'Density (kg/L)', 'Total (L)', 'Low (L)', 'High (L)', 'Status', 'No-info Reason'
+      'Density (kg/L)', 'Total (L)', 'Low (L)', 'High (L)', 'Status', 'No-info Reason',
+      'GH Units', 'Density (lb/gal)', 'Total (US gal)', 'Low (US gal)', 'High (US gal)'
     ];
     const lines = [headers.join(';')];
     arr.forEach(r => {
@@ -1783,6 +1845,7 @@
       if (r.status === 'OK') statusLabel = 'OK';
       else if (r.status === 'WRONG_LOAD') statusLabel = 'Wrong load';
       else statusLabel = 'No ground handler info';
+      const isUs = unitOfRecord(r) === 'us';
       lines.push([
         fmtDateTime(r.timestamp),
         r.timestamp || '',
@@ -1797,7 +1860,12 @@
         Number.isFinite(r.lowL) ? r.lowL.toFixed(2) : '',
         Number.isFinite(r.highL) ? r.highL.toFixed(2) : '',
         statusLabel,
-        r.noInfoReason || ''
+        r.noInfoReason || '',
+        isUs ? 'US gal' : 'L',
+        (isUs && Number.isFinite(r.density)) ? kglToLbGal(r.density).toFixed(3) : '',
+        (isUs && Number.isFinite(r.totalL))  ? litersToGal(r.totalL).toFixed(2) : '',
+        (isUs && Number.isFinite(r.lowL))    ? litersToGal(r.lowL).toFixed(2)   : '',
+        (isUs && Number.isFinite(r.highL))   ? litersToGal(r.highL).toFixed(2)  : ''
       ].map(csvEscape).join(';'));
     });
     return lines.join('\r\n');
@@ -1997,7 +2065,9 @@
   // Construye un workbook con SheetJS. Si la librería no cargó (sin internet
   // o CDN bloqueada), hace fallback automático a CSV.
   function buildWorksheetData(arr) {
-    return arr.map((r) => ({
+    return arr.map((r) => {
+      const isUs = unitOfRecord(r) === 'us';
+      return {
       'Date / Time': r.timestamp ? new Date(r.timestamp) : '',
       'Pilot ID':    r.pilotId || '',
       'Flight':      r.flight || '',
@@ -2010,8 +2080,15 @@
       'Low (L)':     Number.isFinite(r.lowL) ? Number(r.lowL.toFixed(2)) : '',
       'High (L)':    Number.isFinite(r.highL) ? Number(r.highL.toFixed(2)) : '',
       'Status':      (r.status === 'OK' ? 'OK' : (r.status === 'WRONG_LOAD' ? 'Wrong load' : 'No ground handler info')),
-      'No-info Reason': r.noInfoReason || ''
-    }));
+      'No-info Reason': r.noInfoReason || '',
+      // v1.8: equivalentes US (solo estaciones US; vacío en el resto)
+      'GH Units':         isUs ? 'US gal' : 'L',
+      'Density (lb/gal)': (isUs && Number.isFinite(r.density)) ? Number(kglToLbGal(r.density).toFixed(3)) : '',
+      'Total (US gal)':   (isUs && Number.isFinite(r.totalL))  ? Number(litersToGal(r.totalL).toFixed(2)) : '',
+      'Low (US gal)':     (isUs && Number.isFinite(r.lowL))    ? Number(litersToGal(r.lowL).toFixed(2))   : '',
+      'High (US gal)':    (isUs && Number.isFinite(r.highL))   ? Number(litersToGal(r.highL).toFixed(2))  : ''
+      };
+    });
   }
   function handleDownloadXlsx() {
     const filtered = applyFilters(allRecords);
@@ -2030,7 +2107,8 @@
       // Anchos de columna sensatos (en chars).
       ws['!cols'] = [
         { wch: 19 }, { wch: 10 }, { wch: 9 }, { wch: 10 }, { wch: 10 },
-        { wch: 11 }, { wch: 14 }, { wch: 11 }, { wch: 11 }, { wch: 11 }, { wch: 24 }
+        { wch: 11 }, { wch: 14 }, { wch: 11 }, { wch: 11 }, { wch: 11 }, { wch: 24 },
+        { wch: 9 }, { wch: 15 }, { wch: 14 }, { wch: 12 }, { wch: 12 }
       ];
       // Auto-filtro sobre toda la tabla.
       const range = XLSX.utils.decode_range(ws['!ref']);

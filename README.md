@@ -19,6 +19,7 @@ GitHub Pages, sin login ni instalación. Funciona en cualquier navegador moderno
 2. Ingresar número de vuelo, FR (KG) y FOB (KG).
 3. Pedir la densidad por radio/teléfono al ground handler.
 4. La calculadora devuelve el **rango en litros** (low end / high end, ±1.75%) que el piloto le comunica al ground handler.
+   - **Estaciones de EE. UU. y Puerto Rico (v1.8):** al escribir el aeropuerto, la calculadora cambia sola a **galones US** y pide la densidad en **lb/gal** (6.43–7.01), que es como la reporta el ground handler allá. El interruptor **Liters · kg/L / US gal · lb/gal** bajo el campo Density permite forzar la unidad a mano en cualquier estación. FR y FOB siguen siempre en kg.
 5. Apretar **Log load** → confirmación inmediata; el registro se guarda en el dispositivo y se sube al backend en segundo plano (si no hay red o tarda más de 8 s, queda en cola y se reenvía solo).
 6. Si el ground handler no se comunica, el piloto deja constancia con **No info from GH** (requiere nombre, vuelo y aeropuerto).
 7. El indicador **Synced · cloud / Offline · queued** bajo los botones muestra si el último registro ya llegó al servidor.
@@ -43,6 +44,15 @@ TOTAL_L   = (TOTAL_KG + 200) / densidad
 LOW_END   = TOTAL_L × (1 − 0.0175)
 HIGH_END  = TOTAL_L × (1 + 0.0175)
 ```
+
+En unidades US (v1.8) la fórmula es la misma; solo se convierte a la entrada y a la salida:
+
+```
+densidad [kg/L] = densidad [lb/gal] / 8.3454
+resultado [US gal] = resultado [L] / 3.785411784
+```
+
+La base de datos y los registros locales guardan **siempre** kg/L y litros; el registro lleva además `unit` (`metric` / `us`) para saber cómo se capturó.
 
 ## Notas técnicas
 
