@@ -5,6 +5,55 @@ Cada versión publicada en `main` es lo que sirve GitHub Pages.
 
 ---
 
+## v1.9 — 2026-10-05 · Nuevo proyecto de Supabase (migración de backend)
+
+**Motivo.** El proyecto de Supabase original (`bpbrvepsrscakhfserfb`) estaba en
+una cuenta personal. Los datos se movieron a un proyecto nuevo
+(`pchpwjjjlanpiowxrfxw`, misma región East US) en una cuenta con correo
+McKinsey, como puente hasta transferirlo a una organización de Viva Aerobus
+(Supabase permite transferir proyectos entre organizaciones sin cambiar URL ni
+clave). **La lógica de la calculadora no cambia.**
+
+**Qué cambió (6 líneas):**
+
+| Archivo | Cambio |
+|---|---|
+| `index.html` | `SUPABASE_URL` y `SUPABASE_ANON_KEY` → proyecto nuevo. Footer `v1.9`. |
+| `admin.html` | `SUPABASE_URL` y `SUPABASE_ANON_KEY` → proyecto nuevo. |
+| `sw.js` | `CACHE_VERSION` → `viva-fuel-v23`. |
+
+La clave nueva es del formato **publishable** (`sb_publishable_…`), el
+reemplazo de la *anon key* JWT; es pública por diseño y lo que puede hacer lo
+define RLS: solo `INSERT` y `SELECT`. Verificado: un `DELETE` con esa clave no
+borra nada.
+
+**Datos.** 26,148 registros copiados tal cual (mismos `id`, `timestamp`,
+`created_at`) con `migration/mirror_old_to_new.py`; conteo viejo = nuevo,
+muestra de 25 filas sin diferencias. El esquema nuevo incluye las columnas
+`unit` y `no_info_reason` que v1.8 ya mandaba (antes se descartaban con 400 +
+reintento): desde v1.9 se guardan de verdad y desaparece el POST extra.
+
+**Validación.** 9 comprobaciones Playwright en local contra el proyecto nuevo:
+footer v1.9; los POST van solo al proyecto nuevo (201); registro MEX en litros
+(`unit` nulo, densidad 0.800); registro JFK (`unit = 'us'`, 6.68 lb/gal
+guardado como 0.8004 kg/L); el admin lee solo del proyecto nuevo y muestra los
+registros y los totales.
+
+**Traslape.** Las tablets que sigan en v1.8 escriben al proyecto viejo hasta
+que recarguen con red. Durante una semana se corre a diario
+`py migration\mirror_old_to_new.py` (delta idempotente) y al final
+`--verify-only`. Después el proyecto viejo se puede pausar/borrar.
+
+### Cómo volver a v1.8 (rollback exacto)
+
+`git revert <commit v1.9>` y push, o
+`git checkout v1.8-pre-migration -- index.html admin.html sw.js` + commit + push.
+La app vuelve al proyecto viejo, que queda intacto durante el traslape. Los
+registros que hayan entrado al nuevo se traen de vuelta con el mismo script
+invirtiendo URL/clave. Respaldo de archivos: `prod-backup-2026-10-05-v1.8/`.
+
+---
+
 ## v1.8 — 2026-09-28 · Unidades de EE. UU. (galones US y lb/gal)
 
 **Motivo.** En estaciones de EE. UU. el ground handler factura en galones US y
